@@ -36,6 +36,17 @@ const userSchema = new mongoose.Schema({
   completedLevels: [{
     type: Number
   }],
+  // Track progress within each level
+  levelProgress: [{
+    levelNumber: { type: Number, required: true },
+    questionsAnswered: [{ type: String }], // Array of question IDs
+    correctAnswers: { type: Number, default: 0 },
+    pointsEarned: { type: Number, default: 0 },
+    coinsEarned: { type: Number, default: 0 },
+    selectedQuestions: [{ type: String }], // IDs of the random questions selected for this level
+    startedAt: { type: Date, default: Date.now },
+    lastUpdated: { type: Date, default: Date.now }
+  }],
   achievements: [{
     name: String,
     earnedAt: Date

@@ -12,6 +12,7 @@ let totalPointsEarned = 0;
 let totalCoinsEarned = 0;
 let isAIChatOpen = false;
 let currentQuestionData = null;
+let selectedOptionIndex = null; // Track selected option
 
 // Audio Context for Sound Effects
 const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -156,7 +157,10 @@ function clearAuthToken() {
 async function apiCall(endpoint, options = {}) {
     const defaultOptions = {
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
         }
     };
     
@@ -249,8 +253,12 @@ async function loadDashboard() {
             }
         }, 1000);
     } catch (error) {
+        console.error('Dashboard load error:', error);
         showToast('Failed to load dashboard', 'error');
-        logout();
+        // Only logout if it's an authentication error
+        if (error.message && (error.message.includes('authentication') || error.message.includes('Token'))) {
+            logout();
+        }
     } finally {
         document.getElementById('loading-screen').classList.add('hidden');
     }
@@ -273,24 +281,6 @@ function updateDashboardUI(userData, levels) {
     document.getElementById('points').textContent = userData.totalPoints;
     document.getElementById('completed-levels').textContent = userData.completedLevels.length;
     document.getElementById('streak').textContent = userData.streak;
-    
-    // Update navbar stats
-    document.getElementById('nav-balance').textContent = userData.virtualBalance;
-    document.getElementById('nav-points').textContent = userData.totalPoints;
-    document.getElementById('nav-streak').textContent = userData.streak;
-    
-    // Update achievements
-    const achievementsList = document.getElementById('achievements-list');
-    if (userData.achievements && userData.achievements.length > 0) {
-        achievementsList.innerHTML = userData.achievements.map(achievement => `
-            <div class="achievement-badge">
-                <span>🏆</span>
-                <span>${achievement.name}</span>
-            </div>
-        `).join('');
-    } else {
-        achievementsList.innerHTML = '<p class="no-achievements">Complete levels to earn achievements!</p>';
-    }
     
     // Update levels grid
     const levelsGrid = document.getElementById('levels-grid');
@@ -323,22 +313,61 @@ function updateDashboardUI(userData, levels) {
 async function openLevel(levelNumber) {
     document.getElementById('loading-screen').classList.remove('hidden');
     
+    // FORCE clear all cached state
+    currentQuestions = [];
+    currentLevel = null;
+    currentQuestionIndex = 0;
+    correctAnswersCount = 0;
+    selectedOptionIndex = null;
+    
     try {
-        const levelData = await apiCall(`/game/levels/${levelNumber}`);
+        // Add timestamp to prevent any caching
+        const levelData = await apiCall(`/game/levels/${levelNumber}?t=${Date.now()}`);
+        console.log('📥 Received level data:', {
+            hasProgress: !!levelData.progress,
+            progress: levelData.progress,
+            totalQuestions: levelData.questions.length,
+            questionIDs: levelData.questions.map(q => q._id),
+            firstQuestionText: levelData.questions[0]?.question.substring(0, 50)
+        });
+        
         currentLevel = levelData.level;
         currentQuestions = levelData.questions;
-        currentQuestionIndex = 0;
-        correctAnswersCount = 0;
-        totalPointsEarned = 0;
-        totalCoinsEarned = 0;
+        
+        // Check if there's existing progress
+        if (levelData.progress && levelData.progress.questionsAnswered > 0) {
+            // Resume from the last question
+            currentQuestionIndex = levelData.progress.questionsAnswered;
+            correctAnswersCount = levelData.progress.correctAnswers;
+            totalPointsEarned = levelData.progress.pointsEarned;
+            totalCoinsEarned = levelData.progress.coinsEarned;
+            
+            console.log('📊 Resuming Level Progress:', {
+                questionsAnswered: currentQuestionIndex,
+                totalQuestions: currentQuestions.length,
+                correctAnswers: correctAnswersCount,
+                pointsEarned: totalPointsEarned
+            });
+            
+            // Check if already completed all questions
+            if (currentQuestionIndex >= currentQuestions.length) {
+                // All questions answered, should complete level
+                currentQuestionIndex = currentQuestions.length - 1;
+            }
+        } else {
+            // Starting fresh
+            currentQuestionIndex = 0;
+            correctAnswersCount = 0;
+            totalPointsEarned = 0;
+            totalCoinsEarned = 0;
+            
+            console.log('🆕 Starting fresh level');
+        }
         
         displayLevelIntro();
         showScreen('level-detail-screen');
-        
-        // Update navbar stats
-        document.getElementById('nav-balance-level').textContent = currentUser.virtualBalance;
-        document.getElementById('nav-points-level').textContent = currentUser.totalPoints;
     } catch (error) {
+        console.error('Error loading level:', error);
         showToast('Failed to load level', 'error');
     } finally {
         document.getElementById('loading-screen').classList.add('hidden');
@@ -349,6 +378,14 @@ function displayLevelIntro() {
     document.getElementById('level-icon-large').textContent = currentLevel.icon;
     document.getElementById('level-title').textContent = currentLevel.title;
     document.getElementById('level-introduction').textContent = currentLevel.introduction;
+    
+    // Update button text if resuming
+    const startBtn = document.getElementById('start-quiz-btn');
+    if (currentQuestionIndex > 0) {
+        startBtn.textContent = `Resume Quiz (Question ${currentQuestionIndex + 1}/${currentQuestions.length}) 🚀`;
+    } else {
+        startBtn.textContent = 'Start Quiz 🚀';
+    }
     
     // Show intro, hide quiz and complete
     document.querySelector('.level-intro').classList.remove('hidden');
@@ -361,23 +398,52 @@ function startQuiz() {
     document.getElementById('quiz-container').classList.remove('hidden');
     document.getElementById('total-questions').textContent = currentQuestions.length;
     
+    // Safety check - if no questions, show error
+    if (!currentQuestions || currentQuestions.length === 0) {
+        alert('Error: No questions available. Please try refreshing the page.');
+        loadDashboard();
+        return;
+    }
+    
     displayQuestion();
 }
 
 function displayQuestion() {
     const question = currentQuestions[currentQuestionIndex];
+    
+    // Safety check
+    if (!question) {
+        console.error('No question at index', currentQuestionIndex);
+        showToast('Error loading question', 'error');
+        return;
+    }
+    
     currentQuestionData = question; // Store for AI hints
+    selectedOptionIndex = null; // Reset selected option
     
     // Track question start time
     questionStartTime = Date.now();
     
     // Update progress
     document.getElementById('current-question').textContent = currentQuestionIndex + 1;
+    document.getElementById('current-question-header').textContent = currentQuestionIndex + 1;
     const progress = ((currentQuestionIndex + 1) / currentQuestions.length) * 100;
     document.getElementById('progress-fill').style.width = progress + '%';
     
+    // Display difficulty badge with color coding
+    const difficultyBadge = document.getElementById('difficulty-badge');
+    const difficulty = question.difficulty.toUpperCase();
+    difficultyBadge.textContent = difficulty;
+    difficultyBadge.className = 'difficulty-badge difficulty-' + question.difficulty;
+    
     // Display question
     document.getElementById('question-text').textContent = question.question;
+    
+    // Reset and disable submit button
+    const submitBtn = document.getElementById('submit-answer-btn');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Submit Answer';
+    submitBtn.style.display = 'block';
     
     // Reset AI hint
     const hintBtn = document.getElementById('ai-hint-btn');
@@ -389,7 +455,7 @@ function displayQuestion() {
     // Display options
     const optionsContainer = document.getElementById('options-container');
     optionsContainer.innerHTML = question.options.map((option, index) => `
-        <div class="option" data-index="${index}" onclick="selectOption(${index}, '${question._id}')">
+        <div class="option" data-index="${index}" onclick="selectOption(${index})">
             ${option}
         </div>
     `).join('');
@@ -398,7 +464,31 @@ function displayQuestion() {
     document.getElementById('feedback-container').classList.add('hidden');
 }
 
-async function selectOption(selectedIndex, questionId) {
+function selectOption(selectedIndex) {
+    // Remove previous selection
+    const options = document.querySelectorAll('.option');
+    options.forEach(opt => {
+        opt.classList.remove('selected');
+    });
+    
+    // Mark new selection
+    options[selectedIndex].classList.add('selected');
+    selectedOptionIndex = selectedIndex;
+    
+    // Enable submit button
+    const submitBtn = document.getElementById('submit-answer-btn');
+    submitBtn.disabled = false;
+}
+
+async function submitAnswer() {
+    if (selectedOptionIndex === null) return;
+    
+    const question = currentQuestions[currentQuestionIndex];
+    const submitBtn = document.getElementById('submit-answer-btn');
+    
+    // Hide submit button
+    submitBtn.style.display = 'none';
+    
     // Calculate time spent on question
     const timeSpent = questionStartTime ? Math.round((Date.now() - questionStartTime) / 1000) : 30;
     
@@ -413,10 +503,16 @@ async function selectOption(selectedIndex, questionId) {
         const result = await apiCall('/game/submit-answer', {
             method: 'POST',
             body: JSON.stringify({
-                questionId: questionId,
-                selectedAnswer: selectedIndex,
+                questionId: question._id,
+                selectedAnswer: selectedOptionIndex,
                 timeSpent: timeSpent
             })
+        });
+        
+        console.log('✅ Answer submitted:', {
+            questionIndex: currentQuestionIndex,
+            correct: result.correct,
+            newProgress: currentQuestionIndex + 1
         });
         
         // Update user balance and points
@@ -424,12 +520,8 @@ async function selectOption(selectedIndex, questionId) {
         currentUser.totalPoints = result.newPoints;
         currentUser.streak = result.streak;
         
-        // Update navbar
-        document.getElementById('nav-balance-level').textContent = result.newBalance;
-        document.getElementById('nav-points-level').textContent = result.newPoints;
-        
         // Visual feedback
-        const selectedOption = options[selectedIndex];
+        const selectedOption = options[selectedOptionIndex];
         const correctOption = options[result.correctAnswer];
         
         if (result.correct) {
@@ -452,9 +544,14 @@ async function selectOption(selectedIndex, questionId) {
         
     } catch (error) {
         showToast('Failed to submit answer', 'error');
-        // Re-enable options on error
+        // Re-enable submit button and options on error
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit Answer';
+        submitBtn.style.display = 'block';
         options.forEach(opt => {
             opt.classList.remove('disabled');
+            const index = parseInt(opt.dataset.index);
+            opt.onclick = () => selectOption(index);
         });
     }
 }
@@ -729,7 +826,85 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     // Logout button
-    document.getElementById('logout-btn').addEventListener('click', logout);
+    document.getElementById('header-logout').addEventListener('click', (e) => {
+        e.preventDefault();
+        logout();
+    });
+    
+    document.getElementById('header-logout-level').addEventListener('click', (e) => {
+        e.preventDefault();
+        logout();
+    });
+    
+    // Profile dropdown toggles
+    document.getElementById('profile-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleDropdown('profile-menu');
+    });
+    
+    document.getElementById('profile-btn-level').addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleDropdown('profile-menu-level');
+    });
+    
+    // AI Insights dropdown toggles
+    document.getElementById('ai-insights-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleDropdown('ai-insights-menu');
+    });
+    
+    document.getElementById('ai-insights-btn-level').addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleDropdown('ai-insights-menu-level');
+    });
+    
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', () => {
+        closeAllDropdowns();
+    });
+    
+    // View Profile links
+    document.getElementById('view-profile').addEventListener('click', (e) => {
+        e.preventDefault();
+        loadProfileScreen();
+    });
+    
+    document.getElementById('view-profile-level').addEventListener('click', (e) => {
+        e.preventDefault();
+        loadProfileScreen();
+    });
+    
+    // Back to dashboard from profile
+    document.getElementById('back-to-dashboard-from-profile').addEventListener('click', () => {
+        loadDashboard();
+    });
+    
+    // AI Insights modal actions (from dashboard)
+    document.getElementById('header-analyze-weak-topics').addEventListener('click', (e) => {
+        e.preventDefault();
+        openAIInsightsModal('weak-topics');
+    });
+    
+    document.getElementById('header-generate-learning-path').addEventListener('click', (e) => {
+        e.preventDefault();
+        openAIInsightsModal('learning-path');
+    });
+    
+    // AI Insights modal actions (from level screen)
+    document.getElementById('level-analyze-weak-topics').addEventListener('click', (e) => {
+        e.preventDefault();
+        openAIInsightsModal('weak-topics');
+    });
+    
+    document.getElementById('level-generate-learning-path').addEventListener('click', (e) => {
+        e.preventDefault();
+        openAIInsightsModal('learning-path');
+    });
+    
+    // Close AI modal
+    document.getElementById('close-ai-modal').addEventListener('click', () => {
+        document.getElementById('ai-insights-modal').classList.add('hidden');
+    });
     
     // Back to dashboard buttons
     document.getElementById('back-to-dashboard').addEventListener('click', () => {
@@ -742,6 +917,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Start quiz button
     document.getElementById('start-quiz-btn').addEventListener('click', startQuiz);
+    
+    // Submit answer button
+    document.getElementById('submit-answer-btn').addEventListener('click', submitAnswer);
     
     // Next question button
     document.getElementById('next-question-btn').addEventListener('click', nextQuestion);
@@ -784,118 +962,325 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // AI hint button
     document.getElementById('ai-hint-btn').addEventListener('click', getAIHint);
-    
-    // New AI features event listeners
-    document.getElementById('analyze-weak-topics-btn').addEventListener('click', analyzeWeakTopics);
-    document.getElementById('generate-learning-path-btn').addEventListener('click', generateLearningPath);
-    document.getElementById('refresh-motivation-btn').addEventListener('click', getMotivation);
 });
 
 // Make functions available globally
 window.openLevel = openLevel;
 window.selectOption = selectOption;
 
+// ===== DROPDOWN MANAGEMENT =====
+
+function toggleDropdown(menuId) {
+    const menu = document.getElementById(menuId);
+    const isShown = menu.classList.contains('show');
+    
+    // Close all dropdowns first
+    closeAllDropdowns();
+    
+    // Toggle the clicked one
+    if (!isShown) {
+        menu.classList.add('show');
+    }
+}
+
+function closeAllDropdowns() {
+    document.querySelectorAll('.dropdown-menu').forEach(menu => {
+        menu.classList.remove('show');
+    });
+}
+
+// ===== PROFILE SCREEN =====
+
+async function loadProfileScreen() {
+    try {
+        showScreen('profile-screen');
+        const userData = await apiCall('/user/profile');
+        const levelsData = await apiCall('/game/levels');
+        
+        // Update basic profile info
+        document.getElementById('profile-username').textContent = userData.username;
+        document.getElementById('profile-email').textContent = userData.email;
+        document.getElementById('profile-balance').textContent = userData.virtualBalance;
+        document.getElementById('profile-points').textContent = userData.totalPoints;
+        document.getElementById('profile-completed').textContent = userData.completedLevels.length;
+        document.getElementById('profile-streak').textContent = userData.streak;
+        
+        // Render charts
+        renderProfileCharts(userData, levelsData);
+        
+        // Render level statistics table
+        renderLevelStatsTable(userData, levelsData);
+    } catch (error) {
+        console.error('Error loading profile:', error);
+        showToast('Failed to load profile', 'error');
+    }
+}
+
+function renderProfileCharts(userData, levelsData) {
+    try {
+        const levelProgress = userData.levelProgress || [];
+        
+        // Prepare data for charts
+        const levelNames = [];
+        const accuracies = [];
+        const questionCounts = [];
+        
+        levelsData.forEach(level => {
+            const progress = levelProgress.find(lp => lp.levelNumber === level.levelNumber);
+            if (progress && progress.questionsAnswered && progress.questionsAnswered.length > 0) {
+                levelNames.push(`Level ${level.levelNumber}`);
+                const accuracy = (progress.correctAnswers / progress.questionsAnswered.length) * 100;
+                accuracies.push(accuracy.toFixed(1));
+                questionCounts.push(progress.questionsAnswered.length);
+            }
+        });
+        
+        // If no data, show empty state
+        if (levelNames.length === 0) {
+            const chartsGrid = document.querySelector('.charts-grid');
+            if (chartsGrid) {
+                chartsGrid.innerHTML = '<p style="text-align: center; padding: 40px; color: #6b7280;">Start playing levels to see your performance charts!</p>';
+            }
+            return;
+        }
+        
+        // Destroy existing charts if they exist
+        if (window.accuracyChart) window.accuracyChart.destroy();
+        if (window.questionsChart) window.questionsChart.destroy();
+        
+        // Check if Chart is defined
+        if (typeof Chart === 'undefined') {
+            console.error('Chart.js is not loaded');
+            return;
+        }
+        
+        // Accuracy Chart (Bar Chart)
+        const accuracyCanvas = document.getElementById('accuracy-chart');
+        if (!accuracyCanvas) {
+            console.error('accuracy-chart canvas not found');
+            return;
+        }
+        const accuracyCtx = accuracyCanvas.getContext('2d');
+        window.accuracyChart = new Chart(accuracyCtx, {
+            type: 'bar',
+            data: {
+                labels: levelNames,
+                datasets: [{
+                    label: 'Accuracy %',
+                    data: accuracies,
+                    backgroundColor: 'rgba(59, 130, 246, 0.6)',
+                    borderColor: 'rgba(59, 130, 246, 1)',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            }
+        });
+        
+        // Questions Chart (Pie Chart)
+        const questionsCanvas = document.getElementById('questions-chart');
+        if (!questionsCanvas) {
+            console.error('questions-chart canvas not found');
+            return;
+        }
+        const questionsCtx = questionsCanvas.getContext('2d');
+        window.questionsChart = new Chart(questionsCtx, {
+            type: 'pie',
+            data: {
+                labels: levelNames,
+                datasets: [{
+                    data: questionCounts,
+                    backgroundColor: [
+                        'rgba(59, 130, 246, 0.8)',
+                        'rgba(16, 185, 129, 0.8)',
+                        'rgba(245, 158, 11, 0.8)',
+                        'rgba(239, 68, 68, 0.8)',
+                        'rgba(139, 92, 246, 0.8)',
+                        'rgba(236, 72, 153, 0.8)',
+                        'rgba(34, 197, 94, 0.8)',
+                        'rgba(249, 115, 22, 0.8)',
+                        'rgba(14, 165, 233, 0.8)',
+                        'rgba(168, 85, 247, 0.8)'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'right'
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error rendering profile charts:', error);
+    }
+}
+
+function renderLevelStatsTable(userData, levelsData) {
+    const tableContainer = document.getElementById('level-stats-table');
+    const levelProgress = userData.levelProgress || [];
+    
+    let html = `
+        <div class="level-stat-row header">
+            <div>Level</div>
+            <div>Topic</div>
+            <div>Questions</div>
+            <div>Accuracy</div>
+            <div>Status</div>
+        </div>
+    `;
+    
+    levelsData.forEach(level => {
+        const progress = levelProgress.find(lp => lp.levelNumber === level.levelNumber);
+        const questionsAnswered = progress?.questionsAnswered?.length || 0;
+        const correctAnswers = progress?.correctAnswers || 0;
+        const accuracy = questionsAnswered > 0 ? ((correctAnswers / questionsAnswered) * 100).toFixed(1) : 0;
+        const isCompleted = level.isCompleted;
+        const accuracyClass = accuracy >= 70 ? 'high' : accuracy >= 50 ? 'medium' : 'low';
+        
+        html += `
+            <div class="level-stat-row">
+                <div class="level-stat-icon">${level.icon}</div>
+                <div><strong>${level.title}</strong></div>
+                <div>${questionsAnswered} / 15</div>
+                <div class="level-stat-accuracy ${accuracyClass}">${accuracy}%</div>
+                <div>${isCompleted ? '✅ Completed' : questionsAnswered > 0 ? '🔄 In Progress' : '🔒 Not Started'}</div>
+            </div>
+        `;
+    });
+    
+    tableContainer.innerHTML = html;
+}
+
+// ===== AI INSIGHTS MODAL =====
+
+function openAIInsightsModal(type) {
+    const modal = document.getElementById('ai-insights-modal');
+    const modalBody = document.getElementById('ai-modal-body');
+    const modalTitle = document.getElementById('ai-modal-title');
+    
+    if (type === 'weak-topics') {
+        modalTitle.textContent = '📉 Topics to Improve';
+        modalBody.innerHTML = '<div class="loading-spinner-small"></div>';
+        modal.classList.remove('hidden');
+        analyzeWeakTopicsModal();
+    } else if (type === 'learning-path') {
+        modalTitle.textContent = '🎯 Personalized Learning Path';
+        modalBody.innerHTML = '<div class="loading-spinner-small"></div>';
+        modal.classList.remove('hidden');
+        generateLearningPathModal();
+    }
+}
+
 // ===== NEW AI FEATURES =====
 
-// Analyze weak topics
-async function analyzeWeakTopics() {
-    const btn = document.getElementById('analyze-weak-topics-btn');
-    const listContainer = document.getElementById('weak-topics-list');
-    
-    btn.disabled = true;
-    btn.textContent = 'Analyzing...';
-    listContainer.innerHTML = '<div class="loading-spinner-small"></div>';
+// Analyze weak topics (for modal)
+async function analyzeWeakTopicsModal() {
+    const modalBody = document.getElementById('ai-modal-body');
     
     try {
         const response = await apiCall('/ai/weak-topics');
         const weakTopics = response.weakTopics || [];
         
         if (weakTopics.length === 0) {
-            listContainer.innerHTML = '<p class="no-data">Great job! No weak areas detected yet. Keep practicing!</p>';
+            modalBody.innerHTML = '<p class="no-data">Great job! No weak areas detected yet. Keep practicing!</p>';
         } else {
-            listContainer.innerHTML = weakTopics.map(topic => `
-                <div class="weak-topic-item">
-                    <div class="weak-topic-header">
-                        <span class="weak-topic-name">${topic.topic}</span>
-                        <span class="weak-topic-score">Weakness: ${Math.round(topic.weaknessScore)}%</span>
+            let html = '<div class="weak-topics-list">';
+            weakTopics.forEach(topic => {
+                html += `
+                    <div class="weak-topic-item">
+                        <div class="weak-topic-header">
+                            <h4>${topic.topic}</h4>
+                            <span class="accuracy-badge ${topic.accuracy < 50 ? 'low' : topic.accuracy < 70 ? 'medium' : 'high'}">${topic.accuracy}% accuracy</span>
+                        </div>
+                        <div class="weak-topic-suggestion">${topic.suggestion}</div>
+                        ${topic.detailedAnalysis ? `<div class="weak-topic-analysis">${topic.detailedAnalysis}</div>` : ''}
+                        <div class="weak-topic-stats">
+                            <span>📝 ${topic.questionsAttempted} questions attempted</span>
+                            <span>✅ ${topic.correctAnswers} correct</span>
+                            <span>❌ ${topic.questionsAttempted - topic.correctAnswers} to improve</span>
+                        </div>
                     </div>
-                    <div class="weak-topic-category">${topic.category}</div>
-                    <div class="weak-topic-suggestions">
-                        <strong>Suggestions:</strong>
-                        <ul>
-                            ${(topic.suggestions || topic.improvementSuggestions || []).map(s => `<li>${s}</li>`).join('')}
-                        </ul>
-                    </div>
-                </div>
-            `).join('');
+                `;
+            });
+            html += '</div>';
+            modalBody.innerHTML = html;
         }
-        
-        showToast('Weak topics analyzed successfully!', 'success');
     } catch (error) {
-        listContainer.innerHTML = '<p class="error-text">Failed to analyze weak topics. Please try again.</p>';
-        showToast('Failed to analyze weak topics', 'error');
-    } finally {
-        btn.disabled = false;
-        btn.textContent = 'Refresh';
+        console.error('Error analyzing weak topics:', error);
+        modalBody.innerHTML = '<p class="error-text">Failed to analyze topics. Please try again.</p>';
     }
 }
 
-// Generate learning path
-async function generateLearningPath() {
-    const btn = document.getElementById('generate-learning-path-btn');
-    const listContainer = document.getElementById('learning-path-list');
-    
-    btn.disabled = true;
-    btn.textContent = 'Generating...';
-    listContainer.innerHTML = '<div class="loading-spinner-small"></div>';
+// Generate learning path (for modal)
+async function generateLearningPathModal() {
+    const modalBody = document.getElementById('ai-modal-body');
     
     try {
         const response = await apiCall('/ai/learning-path');
         const learningPath = response.learningPath || [];
         
         if (learningPath.length === 0) {
-            listContainer.innerHTML = '<p class="no-data">Complete some levels to get personalized recommendations!</p>';
+            modalBody.innerHTML = '<p class="no-data">Complete some levels to get personalized recommendations!</p>';
         } else {
-            listContainer.innerHTML = learningPath.map((item, index) => `
-                <div class="learning-path-item priority-${Math.min(item.priority, 10)}">
-                    <div class="learning-path-number">${index + 1}</div>
-                    <div class="learning-path-content">
-                        <div class="learning-path-header">
-                            <span class="learning-path-topic">${item.topic}</span>
-                            <span class="learning-path-priority">Priority: ${item.priority}/10</span>
-                        </div>
-                        <div class="learning-path-category">${item.category}</div>
-                        <p class="learning-path-reason">${item.reason || 'Recommended for your growth'}</p>
-                        ${item.estimatedDays ? `<span class="learning-path-time">⏱️ ~${item.estimatedDays} days</span>` : ''}
-                        ${item.resources ? `
-                            <div class="learning-path-resources">
-                                <strong>Resources:</strong>
-                                <ul>
-                                    ${item.resources.map(r => `<li>${r}</li>`).join('')}
-                                </ul>
+            let html = '<div class="learning-path-list">';
+            learningPath.forEach((step, index) => {
+                html += `
+                    <div class="learning-path-step">
+                        <div class="step-number">${index + 1}</div>
+                        <div class="step-content">
+                            <h4>${step.level}</h4>
+                            <p>${step.recommendation}</p>
+                            <div class="step-priority priority-${step.priority.toLowerCase()}">
+                                ${step.priority} Priority
                             </div>
-                        ` : ''}
+                        </div>
                     </div>
-                </div>
-            `).join('');
+                `;
+            });
+            html += '</div>';
+            modalBody.innerHTML = html;
         }
-        
-        showToast('Learning path generated!', 'success');
     } catch (error) {
-        listContainer.innerHTML = '<p class="error-text">Failed to generate learning path. Please try again.</p>';
-        showToast('Failed to generate learning path', 'error');
-    } finally {
-        btn.disabled = false;
-        btn.textContent = 'Refresh';
+        console.error('Error generating learning path:', error);
+        modalBody.innerHTML = '<p class="error-text">Failed to generate learning path. Please try again.</p>';
     }
 }
 
-// Get motivational message
+// Legacy functions (kept for compatibility but now use modal)
+async function analyzeWeakTopics() {
+    openAIInsightsModal('weak-topics');
+}
+
+async function generateLearningPath() {
+    openAIInsightsModal('learning-path');
+}
+
+// Get motivational message  
 async function getMotivation() {
-    const btn = document.getElementById('refresh-motivation-btn');
     const textElement = document.getElementById('motivation-text');
     
-    btn.disabled = true;
     textElement.textContent = 'Loading...';
     
     try {
@@ -904,8 +1289,6 @@ async function getMotivation() {
         playCoinSound();
     } catch (error) {
         textElement.textContent = 'Keep learning and growing! Every question brings you closer to financial freedom!';
-    } finally {
-        btn.disabled = false;
     }
 }
 

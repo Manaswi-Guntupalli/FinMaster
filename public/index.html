@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <!-- Coin Splash Container -->
@@ -78,21 +79,24 @@
         <nav class="navbar">
             <div class="nav-content">
                 <h1 class="logo">💰 FinMaster</h1>
-                <div class="nav-stats">
-                    <div class="stat">
-                        <span class="stat-icon">💵</span>
-                        <span id="nav-balance">1000</span>
+                <div class="nav-actions">
+                    <!-- AI Insights Dropdown -->
+                    <div class="dropdown">
+                        <button class="btn btn-secondary dropdown-btn" id="ai-insights-btn">🤖 AI Insights</button>
+                        <div class="dropdown-menu" id="ai-insights-menu">
+                            <a href="#" id="header-analyze-weak-topics">📉 Topics to Improve</a>
+                            <a href="#" id="header-generate-learning-path">🎯 Personalized Learning Path</a>
+                        </div>
                     </div>
-                    <div class="stat">
-                        <span class="stat-icon">⭐</span>
-                        <span id="nav-points">0</span>
-                    </div>
-                    <div class="stat">
-                        <span class="stat-icon">🔥</span>
-                        <span id="nav-streak">0</span>
+                    <!-- Profile Dropdown -->
+                    <div class="dropdown">
+                        <button class="btn btn-secondary dropdown-btn" id="profile-btn">👤 Profile</button>
+                        <div class="dropdown-menu" id="profile-menu">
+                            <a href="#" id="view-profile">👤 My Profile</a>
+                            <a href="#" id="header-logout">🚪 Logout</a>
+                        </div>
                     </div>
                 </div>
-                <button id="logout-btn" class="btn btn-secondary">Logout</button>
             </div>
         </nav>
 
@@ -102,6 +106,15 @@
                     <h2>Welcome back, <span id="username"></span>!</h2>
                     <p>Continue your journey to financial mastery</p>
                 </div>
+                
+                <!-- AI Motivation Message -->
+                <div class="insight-card motivation-card" style="margin-top: 20px;">
+                    <div class="motivation-content">
+                        <span class="motivation-icon">💪</span>
+                        <p id="motivation-text">Keep learning and growing! Every question brings you closer to financial freedom!</p>
+                    </div>
+                </div>
+                
                 <div class="user-stats-grid">
                     <div class="stat-card">
                         <div class="stat-icon-large">💵</div>
@@ -134,45 +147,12 @@
                 </div>
             </div>
 
-            <!-- Achievements Section -->
-            <div id="achievements-section" class="achievements-section">
-                <h3>🏆 Your Achievements</h3>
-                <div id="achievements-list" class="achievements-list"></div>
-            </div>
-
-            <!-- AI Insights Section -->
-            <div id="ai-insights-section" class="ai-insights-section">
-                <h3>🤖 AI Insights & Recommendations</h3>
-                
-                <!-- Weak Topics -->
-                <div class="insight-card">
-                    <div class="insight-header">
-                        <h4>📉 Topics to Improve</h4>
-                        <button id="analyze-weak-topics-btn" class="btn btn-small">Analyze</button>
-                    </div>
-                    <div id="weak-topics-list" class="weak-topics-list">
-                        <p class="placeholder-text">Click 'Analyze' to identify areas for improvement</p>
-                    </div>
-                </div>
-
-                <!-- Learning Path -->
-                <div class="insight-card">
-                    <div class="insight-header">
-                        <h4>🎯 Personalized Learning Path</h4>
-                        <button id="generate-learning-path-btn" class="btn btn-small">Generate</button>
-                    </div>
-                    <div id="learning-path-list" class="learning-path-list">
-                        <p class="placeholder-text">Click 'Generate' to get your personalized learning path</p>
-                    </div>
-                </div>
-
-                <!-- AI Motivation -->
-                <div class="insight-card motivation-card">
-                    <div class="motivation-content">
-                        <span class="motivation-icon">💪</span>
-                        <p id="motivation-text">Keep learning and growing! Every question brings you closer to financial freedom!</p>
-                    </div>
-                    <button id="refresh-motivation-btn" class="btn btn-small">New Message</button>
+            <!-- AI Insights Modal -->
+            <div id="ai-insights-modal" class="modal hidden">
+                <div class="modal-content">
+                    <span class="close-modal" id="close-ai-modal">&times;</span>
+                    <h3 id="ai-modal-title">🤖 AI Insights</h3>
+                    <div id="ai-modal-body"></div>
                 </div>
             </div>
 
@@ -190,14 +170,22 @@
             <div class="nav-content">
                 <button id="back-to-dashboard" class="btn btn-secondary">← Back</button>
                 <h1 class="logo">💰 FinMaster</h1>
-                <div class="nav-stats">
-                    <div class="stat">
-                        <span class="stat-icon">💵</span>
-                        <span id="nav-balance-level">1000</span>
+                <div class="nav-actions">
+                    <!-- AI Insights Dropdown -->
+                    <div class="dropdown">
+                        <button class="btn btn-secondary dropdown-btn" id="ai-insights-btn-level">🤖 AI Insights</button>
+                        <div class="dropdown-menu" id="ai-insights-menu-level">
+                            <a href="#" id="level-analyze-weak-topics">📉 Topics to Improve</a>
+                            <a href="#" id="level-generate-learning-path">🎯 Personalized Learning Path</a>
+                        </div>
                     </div>
-                    <div class="stat">
-                        <span class="stat-icon">⭐</span>
-                        <span id="nav-points-level">0</span>
+                    <!-- Profile Dropdown -->
+                    <div class="dropdown">
+                        <button class="btn btn-secondary dropdown-btn" id="profile-btn-level">👤 Profile</button>
+                        <div class="dropdown-menu" id="profile-menu-level">
+                            <a href="#" id="view-profile-level">👤 My Profile</a>
+                            <a href="#" id="header-logout-level">🚪 Logout</a>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -220,12 +208,17 @@
                 </div>
 
                 <div class="question-card">
+                    <div class="question-header">
+                        <span class="question-number">Q<span id="current-question-header">1</span></span>
+                        <span id="difficulty-badge" class="difficulty-badge">EASY</span>
+                    </div>
                     <h3 id="question-text">Question goes here?</h3>
                     <div class="ai-hint-section">
                         <button id="ai-hint-btn" class="btn-hint">💡 Ask AI for Help</button>
                         <div id="ai-hint-container" class="ai-hint-container hidden"></div>
                     </div>
                     <div id="options-container" class="options-container"></div>
+                    <button id="submit-answer-btn" class="btn btn-primary btn-submit" disabled>Submit Answer</button>
                 </div>
 
                 <div id="feedback-container" class="feedback-container hidden">
@@ -256,6 +249,76 @@
                         </div>
                     </div>
                     <button id="back-to-dashboard-complete" class="btn btn-primary btn-large">Back to Dashboard</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- My Profile Screen -->
+    <div id="profile-screen" class="screen">
+        <nav class="navbar">
+            <div class="nav-content">
+                <button id="back-to-dashboard-from-profile" class="btn btn-secondary">← Back to Dashboard</button>
+                <h1 class="logo">💰 FinMaster</h1>
+            </div>
+        </nav>
+
+        <div class="container">
+            <div class="profile-header">
+                <div class="profile-avatar">👤</div>
+                <div class="profile-info">
+                    <h2 id="profile-username">Username</h2>
+                    <p id="profile-email">email@example.com</p>
+                </div>
+            </div>
+
+            <div class="profile-stats-grid">
+                <div class="profile-stat-card">
+                    <div class="stat-icon-large">💵</div>
+                    <div class="stat-info">
+                        <p>Virtual Balance</p>
+                        <h3 id="profile-balance">1000</h3>
+                    </div>
+                </div>
+                <div class="profile-stat-card">
+                    <div class="stat-icon-large">⭐</div>
+                    <div class="stat-info">
+                        <p>Total Points</p>
+                        <h3 id="profile-points">0</h3>
+                    </div>
+                </div>
+                <div class="profile-stat-card">
+                    <div class="stat-icon-large">🏆</div>
+                    <div class="stat-info">
+                        <p>Levels Completed</p>
+                        <h3 id="profile-completed">0</h3>
+                    </div>
+                </div>
+                <div class="profile-stat-card">
+                    <div class="stat-icon-large">🔥</div>
+                    <div class="stat-info">
+                        <p>Current Streak</p>
+                        <h3 id="profile-streak">0</h3>
+                    </div>
+                </div>
+            </div>
+
+            <div class="profile-charts-section">
+                <h3>📊 Level-wise Performance</h3>
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h4>Accuracy by Level</h4>
+                        <canvas id="accuracy-chart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h4>Questions Answered Distribution</h4>
+                        <canvas id="questions-chart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="level-details-section">
+                    <h3>📚 Detailed Level Statistics</h3>
+                    <div id="level-stats-table" class="level-stats-table"></div>
                 </div>
             </div>
         </div>

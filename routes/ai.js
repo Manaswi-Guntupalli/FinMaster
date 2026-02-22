@@ -138,21 +138,28 @@ router.get('/weak-topics', authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.userId);
     
+    if (!user.topicPerformance || user.topicPerformance.length === 0) {
+      return res.json({ weakTopics: [] });
+    }
+    
     const weakTopics = await identifyWeakTopics(user.topicPerformance || [], user);
     
-    // Update user's weak topics
-    user.weakTopics = weakTopics.map(wt => ({
-      topic: wt.topic,
-      category: wt.category,
-      weaknessScore: wt.weaknessScore,
-      identifiedAt: new Date(),
-      improvementSuggestions: wt.suggestions || []
-    }));
-    
-    await user.save();
+    // Update user's weak topics in database
+    if (weakTopics && weakTopics.length > 0) {
+      user.weakTopics = weakTopics.map(wt => ({
+        topic: wt.topic,
+        category: wt.category,
+        weaknessScore: wt.weaknessScore,
+        identifiedAt: new Date(),
+        improvementSuggestions: wt.suggestion ? [wt.suggestion] : []
+      }));
+      
+      await user.save();
+    }
     
     res.json({ weakTopics });
   } catch (error) {
+    console.error('Weak Topics Error:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -162,25 +169,45 @@ router.get('/learning-path', authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.userId);
     
+    // First, identify weak topics from current performance
+    let weakTopics = [];
+    if (user.topicPerformance && user.topicPerformance.length > 0) {
+      weakTopics = await identifyWeakTopics(user.topicPerformance, user);
+    }
+    
+    // Generate learning path based on weak topics and overall performance
     const learningPath = await generateLearningPath(
       user, 
-      user.weakTopics || [], 
+      weakTopics, 
       user.topicPerformance || []
     );
     
-    // Update user's learning path
-    user.learningPath = learningPath.map(lp => ({
-      topic: lp.topic,
-      category: lp.category,
-      priority: lp.priority,
-      status: 'pending',
-      recommendedAt: new Date()
-    }));
-    
-    await user.save();
+    // Update user's learning path in database
+    if (learningPath && learningPath.length > 0) {
+      // Convert priority strings to numbers for database storage
+      const convertPriorityToNumber = (priority) => {
+        if (typeof priority === 'number') return priority;
+        const priorityStr = String(priority).toLowerCase();
+        if (priorityStr === 'high') return 10;
+        if (priorityStr === 'medium') return 5;
+        if (priorityStr === 'low') return 2;
+        return 5; // default to medium
+      };
+      
+      user.learningPath = learningPath.map(lp => ({
+        topic: lp.level || lp.topic,
+        category: lp.category,
+        priority: convertPriorityToNumber(lp.priority),
+        status: 'pending',
+        recommendedAt: new Date()
+      }));
+      
+      await user.save();
+    }
     
     res.json({ learningPath });
   } catch (error) {
+    console.error('Learning Path Error:', error);
     res.status(500).json({ message: error.message });
   }
 });
