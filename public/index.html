@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinMaster - Master Your Financial Future</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Coin Splash Container -->
+    <div id="coin-container"></div>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="spinner"></div>
+        <p>Loading FinMaster...</p>
+    </div>
+
+    <!-- Auth Screen -->
+    <div id="auth-screen" class="screen active">
+        <div class="auth-container">
+            <div class="auth-logo">
+                <h1>💰 FinMaster</h1>
+                <p>Master Your Financial Future</p>
+            </div>
+
+            <!-- Login Form -->
+            <div id="login-form" class="auth-form active">
+                <h2>Welcome Back!</h2>
+                <form id="login">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="login-email" required placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="login-password" required placeholder="••••••••">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Login</button>
+                </form>
+                <p class="auth-switch">
+                    Don't have an account? 
+                    <a href="#" id="show-register">Register here</a>
+                </p>
+            </div>
+
+            <!-- Register Form -->
+            <div id="register-form" class="auth-form">
+                <h2>Join FinMaster</h2>
+                <form id="register">
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" id="register-username" required placeholder="Choose a username">
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="register-email" required placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="register-password" required placeholder="Min. 6 characters">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Create Account</button>
+                </form>
+                <p class="auth-switch">
+                    Already have an account? 
+                    <a href="#" id="show-login">Login here</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Screen -->
+    <div id="dashboard-screen" class="screen">
+        <nav class="navbar">
+            <div class="nav-content">
+                <h1 class="logo">💰 FinMaster</h1>
+                <div class="nav-stats">
+                    <div class="stat">
+                        <span class="stat-icon">💵</span>
+                        <span id="nav-balance">1000</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-icon">⭐</span>
+                        <span id="nav-points">0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-icon">🔥</span>
+                        <span id="nav-streak">0</span>
+                    </div>
+                </div>
+                <button id="logout-btn" class="btn btn-secondary">Logout</button>
+            </div>
+        </nav>
+
+        <div class="container">
+            <div class="dashboard-header">
+                <div class="welcome-message">
+                    <h2>Welcome back, <span id="username"></span>!</h2>
+                    <p>Continue your journey to financial mastery</p>
+                </div>
+                <div class="user-stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon-large">💵</div>
+                        <div class="stat-info">
+                            <p>Virtual Balance</p>
+                            <h3 id="balance">1000</h3>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon-large">⭐</div>
+                        <div class="stat-info">
+                            <p>Total Points</p>
+                            <h3 id="points">0</h3>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon-large">🏆</div>
+                        <div class="stat-info">
+                            <p>Levels Completed</p>
+                            <h3 id="completed-levels">0</h3>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon-large">🔥</div>
+                        <div class="stat-info">
+                            <p>Streak</p>
+                            <h3 id="streak">0</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Achievements Section -->
+            <div id="achievements-section" class="achievements-section">
+                <h3>🏆 Your Achievements</h3>
+                <div id="achievements-list" class="achievements-list"></div>
+            </div>
+
+            <!-- AI Insights Section -->
+            <div id="ai-insights-section" class="ai-insights-section">
+                <h3>🤖 AI Insights & Recommendations</h3>
+                
+                <!-- Weak Topics -->
+                <div class="insight-card">
+                    <div class="insight-header">
+                        <h4>📉 Topics to Improve</h4>
+                        <button id="analyze-weak-topics-btn" class="btn btn-small">Analyze</button>
+                    </div>
+                    <div id="weak-topics-list" class="weak-topics-list">
+                        <p class="placeholder-text">Click 'Analyze' to identify areas for improvement</p>
+                    </div>
+                </div>
+
+                <!-- Learning Path -->
+                <div class="insight-card">
+                    <div class="insight-header">
+                        <h4>🎯 Personalized Learning Path</h4>
+                        <button id="generate-learning-path-btn" class="btn btn-small">Generate</button>
+                    </div>
+                    <div id="learning-path-list" class="learning-path-list">
+                        <p class="placeholder-text">Click 'Generate' to get your personalized learning path</p>
+                    </div>
+                </div>
+
+                <!-- AI Motivation -->
+                <div class="insight-card motivation-card">
+                    <div class="motivation-content">
+                        <span class="motivation-icon">💪</span>
+                        <p id="motivation-text">Keep learning and growing! Every question brings you closer to financial freedom!</p>
+                    </div>
+                    <button id="refresh-motivation-btn" class="btn btn-small">New Message</button>
+                </div>
+            </div>
+
+            <!-- Levels Section -->
+            <div class="levels-section">
+                <h3>📚 Financial Literacy Levels</h3>
+                <div id="levels-grid" class="levels-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Level Detail Screen -->
+    <div id="level-detail-screen" class="screen">
+        <nav class="navbar">
+            <div class="nav-content">
+                <button id="back-to-dashboard" class="btn btn-secondary">← Back</button>
+                <h1 class="logo">💰 FinMaster</h1>
+                <div class="nav-stats">
+                    <div class="stat">
+                        <span class="stat-icon">💵</span>
+                        <span id="nav-balance-level">1000</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-icon">⭐</span>
+                        <span id="nav-points-level">0</span>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <div class="container">
+            <div class="level-intro">
+                <div class="level-icon-large" id="level-icon-large">💰</div>
+                <h2 id="level-title">Level Title</h2>
+                <p id="level-introduction">Level introduction goes here...</p>
+                <button id="start-quiz-btn" class="btn btn-primary btn-large">Start Quiz 🚀</button>
+            </div>
+
+            <div id="quiz-container" class="quiz-container hidden">
+                <div class="quiz-progress">
+                    <div class="progress-bar">
+                        <div id="progress-fill" class="progress-fill"></div>
+                    </div>
+                    <p><span id="current-question">1</span> / <span id="total-questions">15</span></p>
+                </div>
+
+                <div class="question-card">
+                    <h3 id="question-text">Question goes here?</h3>
+                    <div class="ai-hint-section">
+                        <button id="ai-hint-btn" class="btn-hint">💡 Ask AI for Help</button>
+                        <div id="ai-hint-container" class="ai-hint-container hidden"></div>
+                    </div>
+                    <div id="options-container" class="options-container"></div>
+                </div>
+
+                <div id="feedback-container" class="feedback-container hidden">
+                    <div id="feedback-content"></div>
+                    <button id="next-question-btn" class="btn btn-primary">Next Question →</button>
+                </div>
+            </div>
+
+            <div id="level-complete-container" class="level-complete-container hidden">
+                <div class="celebration">
+                    <h2>🎉 Level Complete! 🎉</h2>
+                    <p id="level-complete-message">Congratulations on mastering this level!</p>
+                    <div class="completion-stats">
+                        <div class="completion-stat">
+                            <span class="completion-icon">✅</span>
+                            <p>Questions Correct</p>
+                            <h3 id="correct-answers">0</h3>
+                        </div>
+                        <div class="completion-stat">
+                            <span class="completion-icon">⭐</span>
+                            <p>Points Earned</p>
+                            <h3 id="points-earned">0</h3>
+                        </div>
+                        <div class="completion-stat">
+                            <span class="completion-icon">💰</span>
+                            <p>Coins Earned</p>
+                            <h3 id="coins-earned">0</h3>
+                        </div>
+                    </div>
+                    <button id="back-to-dashboard-complete" class="btn btn-primary btn-large">Back to Dashboard</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <!-- AI Chat Widget -->
+    <div id="ai-chat-widget" class="ai-chat-widget">
+        <button id="ai-chat-toggle" class="ai-chat-toggle">
+            <span class="ai-icon">🤖</span>
+            <span class="ai-text">AI Coach</span>
+        </button>
+        
+        <div id="ai-chat-panel" class="ai-chat-panel hidden">
+            <div class="ai-chat-header">
+                <h3>🤖 AI Financial Coach</h3>
+                <button id="ai-chat-close" class="ai-close-btn">✕</button>
+            </div>
+            <div id="ai-chat-messages" class="ai-chat-messages">
+                <div class="ai-message ai-bot">
+                    <div class="ai-avatar">🤖</div>
+                    <div class="ai-bubble">
+                        Hi! I'm your AI financial coach! Ask me anything about finance, request hints during quizzes, or get personalized study tips. How can I help you today?
+                    </div>
+                </div>
+            </div>
+            <div class="ai-chat-input-container">
+                <input type="text" id="ai-chat-input" placeholder="Ask me anything about finance..." />
+                <button id="ai-chat-send" class="ai-send-btn">Send</button>
+            </div>
+            <div class="ai-quick-actions">
+                <button class="ai-quick-btn" data-action="progress">📊 Analyze My Progress</button>
+                <button class="ai-quick-btn" data-action="tips">💡 Study Tips</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
