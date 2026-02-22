@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog Post - FinMaster</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        .blog-view-page {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding-bottom: 50px;
+        }
+
+        .blog-navbar {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px 30px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .blog-navbar .logo {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        .blog-navbar .nav-buttons {
+            display: flex;
+            gap: 15px;
+        }
+
+        .article-container {
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+
+        .article-container.loaded {
+            opacity: 1;
+        }
+
+        .article-card {
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        .article-header-image {
+            width: 100%;
+            height: 400px;
+            object-fit: cover;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: block;
+        }
+
+        .article-content {
+            padding: 40px;
+        }
+
+        .article-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 20px;
+            border-bottom: 2px solid var(--border);
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .article-author {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .article-author-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .article-author-name {
+            font-weight: 600;
+            color: var(--primary-color);
+            font-size: 16px;
+        }
+
+        .article-date {
+            font-size: 13px;
+            color: var(--gray);
+        }
+
+        .article-stats {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .article-stat {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 14px;
+            color: var(--gray);
+        }
+
+        .article-title {
+            font-size: 42px;
+            font-weight: 700;
+            color: var(--dark);
+            margin-bottom: 20px;
+            line-height: 1.3;
+        }
+
+        .article-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+
+        .article-tag {
+            padding: 6px 16px;
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--primary-color);
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .article-body {
+            font-size: 17px;
+            line-height: 1.8;
+            color: #334155;
+        }
+
+        .article-body h1,
+        .article-body h2,
+        .article-body h3 {
+            color: var(--dark);
+            margin-top: 30px;
+            margin-bottom: 15px;
+            font-weight: 700;
+        }
+
+        .article-body h1 {
+            font-size: 32px;
+        }
+
+        .article-body h2 {
+            font-size: 28px;
+        }
+
+        .article-body h3 {
+            font-size: 24px;
+        }
+
+        .article-body p {
+            margin-bottom: 20px;
+        }
+
+        .article-body ul,
+        .article-body ol {
+            margin-left: 25px;
+            margin-bottom: 20px;
+        }
+
+        .article-body li {
+            margin-bottom: 10px;
+        }
+
+        .article-body a {
+            color: var(--primary-color);
+            text-decoration: underline;
+        }
+
+        .article-body blockquote {
+            border-left: 4px solid var(--primary-color);
+            padding-left: 20px;
+            margin: 25px 0;
+            font-style: italic;
+            color: var(--gray);
+        }
+
+        .article-body code {
+            background: #f1f5f9;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 15px;
+        }
+
+        .article-body pre {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 10px;
+            overflow-x: auto;
+            margin: 20px 0;
+        }
+
+        .article-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 2px solid var(--border);
+        }
+
+        .btn-like {
+            padding: 12px 30px;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-like:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+
+        .btn-like.liked {
+            background: #ef4444;
+        }
+
+        .loading-container {
+            max-width: 900px;
+            margin: 100px auto;
+            text-align: center;
+            color: white;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .error-container {
+            max-width: 900px;
+            margin: 100px auto;
+            text-align: center;
+            color: white;
+            padding: 20px;
+        }
+
+        .error-container h2 {
+            font-size: 36px;
+            margin-bottom: 15px;
+        }
+
+        @media (max-width: 768px) {
+            .article-header-image {
+                height: 250px;
+            }
+
+            .article-content {
+                padding: 25px;
+            }
+
+            .article-title {
+                font-size: 28px;
+            }
+
+            .article-body {
+                font-size: 16px;
+            }
+
+            .article-meta {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="blog-view-page">
+        <!-- Navigation -->
+        <nav class="blog-navbar">
+            <a href="/" class="logo">💰 FinMaster</a>
+            <div class="nav-buttons">
+                <button class="btn btn-secondary" onclick="window.location.href='/blog.html'">📚 All Blogs</button>
+                <button class="btn btn-secondary" onclick="window.location.href='/'">🏠 Dashboard</button>
+            </div>
+        </nav>
+
+        <!-- Loading State -->
+        <div id="loading-container" class="loading-container">
+            <div class="spinner"></div>
+            <p style="font-size: 18px;">Loading blog post...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-container" class="error-container" style="display: none;">
+            <h2>❌ Blog Not Found</h2>
+            <p style="font-size: 18px; margin-bottom: 20px;">The blog post you're looking for doesn't exist.</p>
+            <button class="btn btn-primary" onclick="window.location.href='/blog.html'">← Back to Blogs</button>
+        </div>
+
+        <!-- Article Content -->
+        <div id="article-container" class="article-container" style="display: none;">
+            <div class="article-card">
+                <div class="article-content">
+                    <div class="article-meta">
+                        <div class="article-author">
+                            <span style="font-size: 40px;">👤</span>
+                            <div class="article-author-info">
+                                <span class="article-author-name" id="article-author">Loading...</span>
+                                <span class="article-date" id="article-date">Loading...</span>
+                            </div>
+                        </div>
+                        <div class="article-stats">
+                            <span class="article-stat">
+                                <span>❤️</span>
+                                <span id="likes-count">0</span>
+                            </span>
+                            <span class="article-stat">
+                                <span>👁️</span>
+                                <span id="views-count">0</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <h1 class="article-title" id="article-title">Loading...</h1>
+
+                    <div class="article-tags" id="article-tags"></div>
+
+                    <div class="article-body" id="article-body">
+                        Loading content...
+                    </div>
+
+                    <div class="article-actions">
+                        <button class="btn-like" id="like-btn" onclick="likeBlog()">
+                            <span>❤️</span>
+                            <span id="like-text">Like this post</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentBlogId = null;
+        let hasLiked = false;
+
+        // Load blog on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const blogId = urlParams.get('id');
+
+            if (!blogId) {
+                showError('No blog ID provided');
+                return;
+            }
+
+            currentBlogId = blogId;
+            loadBlog(blogId);
+        });
+
+        // Load blog from API
+        async function loadBlog(blogId) {
+            const loadingContainer = document.getElementById('loading-container');
+            const errorContainer = document.getElementById('error-container');
+            const articleContainer = document.getElementById('article-container');
+
+            try {
+                console.log('Loading blog ID:', blogId);
+                const response = await fetch(`/api/blog/${blogId}`);
+                
+                if (!response.ok) {
+                    throw new Error('Blog not found');
+                }
+
+                const blog = await response.json();
+                console.log('Blog loaded:', blog.title);
+                console.log('Content length:', blog.content ? blog.content.length : 0);
+                console.log('First 100 chars of content:', blog.content ? blog.content.substring(0, 100) : 'NONE');
+
+                // Hide loading
+                loadingContainer.style.display = 'none';
+
+                // Populate article data
+                document.title = blog.title + ' - FinMaster';
+                document.getElementById('article-title').textContent = blog.title;
+                document.getElementById('article-author').textContent = blog.authorName || 'Anonymous';
+                
+                const date = new Date(blog.createdAt).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+                document.getElementById('article-date').textContent = date;
+
+                document.getElementById('likes-count').textContent = blog.likes || 0;
+                document.getElementById('views-count').textContent = blog.views || 0;
+
+                // Tags
+                const tagsContainer = document.getElementById('article-tags');
+                if (blog.tags && blog.tags.length > 0) {
+                    tagsContainer.innerHTML = blog.tags.map(tag => 
+                        `<span class="article-tag">${tag}</span>`
+                    ).join('');
+                } else {
+                    tagsContainer.style.display = 'none';
+                }
+
+                // Content - Make sure it's displayed
+                const articleBody = document.getElementById('article-body');
+                console.log('Article body element:', articleBody);
+                console.log('Blog content exists:', !!blog.content);
+                console.log('Blog content length:', blog.content ? blog.content.length : 0);
+                
+                if (blog.content) {
+                    articleBody.innerHTML = blog.content;
+                    console.log('✅ Content set to innerHTML');
+                    console.log('Article body innerHTML length:', articleBody.innerHTML.length);
+                    
+                    // Force display
+                    articleBody.style.display = 'block';
+                    articleBody.style.opacity = '1';
+                } else {
+                    articleBody.innerHTML = '<p style="color: #666;">No content available for this blog post.</p>';
+                    console.warn('⚠️ No content found in blog');
+                }
+
+                // Show article container immediately
+                articleContainer.style.display = 'block';
+                setTimeout(() => {
+                    articleContainer.classList.add('loaded');
+                }, 50);
+                console.log('✅ Article displayed');
+
+            } catch (error) {
+                console.error('Error loading blog:', error);
+                showError(error.message);
+            }
+        }
+
+        // Like blog post
+        async function likeBlog() {
+            if (hasLiked) {
+                return;
+            }
+
+            try {
+                const token = localStorage.getItem('token');
+                if (!token) {
+                    alert('Please login to like this post');
+                    return;
+                }
+
+                const response = await fetch(`/api/blog/${currentBlogId}/like`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('likes-count').textContent = data.likes;
+                    
+                    const likeBtn = document.getElementById('like-btn');
+                    likeBtn.classList.add('liked');
+                    document.getElementById('like-text').textContent = 'Liked!';
+                    
+                    hasLiked = true;
+                }
+
+            } catch (error) {
+                console.error('Error liking blog:', error);
+            }
+        }
+
+        // Show error
+        function showError(message) {
+            document.getElementById('loading-container').style.display = 'none';
+            document.getElementById('error-container').style.display = 'block';
+            document.getElementById('article-container').style.display = 'none';
+        }
+    </script>
+</body>
+</html>

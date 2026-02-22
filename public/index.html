@@ -88,6 +88,8 @@
                             <a href="#" id="header-generate-learning-path">🎯 Personalized Learning Path</a>
                         </div>
                     </div>
+                    <!-- Blogs Button -->
+                    <button class="btn btn-primary" onclick="window.location.href='/blog.html'" style="margin: 0 10px;">📰 Blogs</button>
                     <!-- Profile Dropdown -->
                     <div class="dropdown">
                         <button class="btn btn-secondary dropdown-btn" id="profile-btn">👤 Profile</button>
@@ -161,6 +163,113 @@
                 <h3>📚 Financial Literacy Levels</h3>
                 <div id="levels-grid" class="levels-grid"></div>
             </div>
+
+            <!-- Real-Life Scenarios Section -->
+            <div id="scenarios-section" class="scenarios-section hidden">
+                <h3>🎯 Real-Life Financial Scenarios</h3>
+                <p class="scenarios-intro">Apply your knowledge to real-world situations faced by Indian youth!</p>
+                <div id="scenarios-grid" class="scenarios-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scenario Detail Screen -->
+    <div id="scenario-detail-screen" class="screen">
+        <nav class="navbar">
+            <div class="nav-content">
+                <button id="back-from-scenario" class="btn btn-secondary">← Back to Dashboard</button>
+                <h1 class="logo">💰 FinMaster</h1>
+                <div class="nav-actions">
+                    <span class="user-stat">💰 <span id="scenario-balance">0</span></span>
+                    <span class="user-stat">⭐ <span id="scenario-points">0</span></span>
+                </div>
+            </div>
+        </nav>
+
+        <div class="container">
+            <!-- Scenario Intro -->
+            <div id="scenario-intro" class="scenario-intro">
+                <div class="scenario-icon-large" id="scenario-icon-large">🏥</div>
+                <h2 id="scenario-title">Scenario Title</h2>
+                <p id="scenario-description" class="scenario-description">Scenario description</p>
+                <div class="scenario-stats">
+                    <span class="stat-badge">📊 <span id="scenario-total-questions">10</span> Questions</span>
+                    <span class="stat-badge">✅ +50 points correct</span>
+                    <span class="stat-badge">❌ -25 points wrong</span>
+                </div>
+                <button id="start-scenario-btn" class="btn btn-primary">Start Scenario 🚀</button>
+            </div>
+
+            <!-- Scenario Quiz -->
+            <div id="scenario-quiz-container" class="scenario-quiz-container hidden">
+                <div class="scenario-progress">
+                    <div class="progress-info">
+                        <span>Question <span id="scenario-current-question">1</span>/<span id="scenario-total-qs">10</span></span>
+                    </div>
+                    <div class="progress-bar">
+                        <div id="scenario-progress-fill" class="progress-fill" style="width: 10%"></div>
+                    </div>
+                </div>
+
+                <div class="scenario-situation-box">
+                    <h4>📖 Story</h4>
+                    <p id="scenario-situation"></p>
+                </div>
+
+                <div class="scenario-money-context">
+                    <h5>💰 Your Financial Position:</h5>
+                    <p id="scenario-money-context"></p>
+                </div>
+
+                <div class="scenario-question-box">
+                    <h3 id="scenario-question"></h3>
+                    <div id="scenario-options" class="scenario-options"></div>
+                </div>
+
+                <button id="submit-scenario-answer" class="btn btn-primary" disabled>Submit Answer</button>
+            </div>
+
+            <!-- Scenario Complete -->
+            <div id="scenario-complete-container" class="scenario-complete-container hidden">
+                <div class="completion-animation">🎉</div>
+                <h2>Scenario Complete!</h2>
+                <div class="scenario-results">
+                    <div class="result-card">
+                        <div class="result-icon">✅</div>
+                        <div class="result-label">Correct Answers</div>
+                        <div class="result-value" id="scenario-final-correct">0</div>
+                    </div>
+                    <div class="result-card">
+                        <div class="result-icon">❌</div>
+                        <div class="result-label">Wrong Answers</div>
+                        <div class="result-value" id="scenario-final-wrong">0</div>
+                    </div>
+                    <div class="result-card">
+                        <div class="result-icon">⭐</div>
+                        <div class="result-label">Points Earned</div>
+                        <div class="result-value" id="scenario-final-points">0</div>
+                    </div>
+                    <div class="result-card">
+                        <div class="result-icon">💔</div>
+                        <div class="result-label">Points Lost</div>
+                        <div class="result-value" id="scenario-final-lost">0</div>
+                    </div>
+                </div>
+                <div class="completion-buttons">
+                    <button id="replay-scenario-btn" class="btn btn-secondary">↻ Replay Scenario</button>
+                    <button id="back-to-dashboard-from-complete" class="btn btn-primary">Back to Dashboard</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scenario Explanation Modal -->
+    <div id="scenario-explanation-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-modal" id="close-scenario-explanation">&times;</span>
+            <h3>💡 Explanation</h3>
+            <div id="scenario-explanation-text"></div>
+            <button id="continue-scenario-btn" class="btn btn-primary">Continue →</button>
         </div>
     </div>
 

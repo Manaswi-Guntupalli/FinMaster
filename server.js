@@ -8,6 +8,8 @@ const authRoutes = require('./routes/auth');
 const gameRoutes = require('./routes/game');
 const userRoutes = require('./routes/user');
 const aiRoutes = require('./routes/ai');
+const scenarioRoutes = require('./routes/scenarios');
+const blogRoutes = require('./routes/blog');
 
 const app = express();
 
@@ -26,6 +28,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/game', gameRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/scenarios', scenarioRoutes);
+app.use('/api/blog', blogRoutes);
 
 // Serve frontend
 app.get('*', (req, res) => {

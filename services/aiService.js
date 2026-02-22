@@ -977,6 +977,54 @@ Explain the mistake and clarify the concept.`
   }
 }
 
+// Enhance scenario explanation with personalized AI insights
+async function enhanceScenarioExplanation(situation, question, userAnswer, correctAnswer, options, baseExplanation) {
+  try {
+    const prompt = `You are a financial coach for Indian youth. A user just answered incorrectly in a real-life financial scenario.
+
+SITUATION: ${situation}
+
+QUESTION: ${question}
+
+OPTIONS: ${JSON.stringify(options)}
+
+USER'S ANSWER: ${userAnswer}
+CORRECT ANSWER: ${correctAnswer}
+
+BASE EXPLANATION: ${baseExplanation}
+
+Enhance this explanation with:
+1. Why their answer could be problematic in real Indian context
+2. A relatable example from Indian youth's life
+3. One actionable tip they can apply today
+4. Encouraging words to keep learning
+
+Keep response under 150 words. Use ₹ for currency. Be supportive, not critical.`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        {
+          role: "system",
+          content: INDIA_CONTEXT
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      max_tokens: 250,
+      temperature: 0.7
+    });
+
+    return completion.choices[0].message.content.trim();
+  } catch (error) {
+    console.error('Error enhancing scenario explanation:', error.message);
+    // Return base explanation if AI fails
+    return baseExplanation;
+  }
+}
+
 module.exports = {
   chatWithAI,
   getQuestionHint,
@@ -989,5 +1037,6 @@ module.exports = {
   suggestNextDifficulty,
   generatePracticeQuestion,
   getMotivationalMessage,
-  explainWrongAnswer
+  explainWrongAnswer,
+  enhanceScenarioExplanation
 };

@@ -246,6 +246,9 @@ async function loadDashboard() {
         updateDashboardUI(userData, levels);
         showScreen('dashboard-screen');
         
+        // Load scenarios (if unlocked)
+        loadScenarios();
+        
         // Load AI insights
         setTimeout(() => {
             if (userData.totalPoints > 0) {
@@ -962,11 +965,26 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // AI hint button
     document.getElementById('ai-hint-btn').addEventListener('click', getAIHint);
+    
+    // Scenario event listeners
+    document.getElementById('start-scenario-btn').addEventListener('click', startScenario);
+    document.getElementById('submit-scenario-answer').addEventListener('click', submitScenarioAnswer);
+    document.getElementById('back-from-scenario').addEventListener('click', () => {
+        loadDashboard();
+    });
+    document.getElementById('back-to-dashboard-from-complete').addEventListener('click', () => {
+        loadDashboard();
+    });
+    document.getElementById('replay-scenario-btn').addEventListener('click', replayScenario);
+    document.getElementById('continue-scenario-btn').addEventListener('click', continueAfterExplanation);
+    document.getElementById('close-scenario-explanation').addEventListener('click', continueAfterExplanation);
 });
 
 // Make functions available globally
 window.openLevel = openLevel;
 window.selectOption = selectOption;
+window.openScenario = openScenario;
+window.selectScenarioOption = selectScenarioOption;
 
 // ===== DROPDOWN MANAGEMENT =====
 
@@ -1018,20 +1036,21 @@ async function loadProfileScreen() {
 
 function renderProfileCharts(userData, levelsData) {
     try {
-        const levelProgress = userData.levelProgress || [];
+        const completedLevelStats = userData.completedLevelStats || [];
+        
+        console.log('📊 Rendering charts with completedLevelStats:', completedLevelStats);
         
         // Prepare data for charts
         const levelNames = [];
         const accuracies = [];
         const questionCounts = [];
         
-        levelsData.forEach(level => {
-            const progress = levelProgress.find(lp => lp.levelNumber === level.levelNumber);
-            if (progress && progress.questionsAnswered && progress.questionsAnswered.length > 0) {
-                levelNames.push(`Level ${level.levelNumber}`);
-                const accuracy = (progress.correctAnswers / progress.questionsAnswered.length) * 100;
-                accuracies.push(accuracy.toFixed(1));
-                questionCounts.push(progress.questionsAnswered.length);
+        // Use completedLevelStats for permanent statistics
+        completedLevelStats.forEach(stats => {
+            if (stats.questionsAnswered > 0) {
+                levelNames.push(`Level ${stats.levelNumber}`);
+                accuracies.push(stats.accuracy.toFixed(1));
+                questionCounts.push(stats.questionsAnswered);
             }
         });
         
@@ -1139,7 +1158,12 @@ function renderProfileCharts(userData, levelsData) {
 
 function renderLevelStatsTable(userData, levelsData) {
     const tableContainer = document.getElementById('level-stats-table');
-    const levelProgress = userData.levelProgress || [];
+    const completedLevelStats = userData.completedLevelStats || [];
+    const levelProgress = userData.levelProgress || []; // Current attempt in progress
+    
+    console.log('📊 Rendering level stats table');
+    console.log('Completed stats:', completedLevelStats);
+    console.log('Current progress:', levelProgress);
     
     let html = `
         <div class="level-stat-row header">
@@ -1152,12 +1176,41 @@ function renderLevelStatsTable(userData, levelsData) {
     `;
     
     levelsData.forEach(level => {
+        // Check for permanent statistics first
+        const stats = completedLevelStats.find(cls => cls.levelNumber === level.levelNumber);
+        // Check for current in-progress attempt
         const progress = levelProgress.find(lp => lp.levelNumber === level.levelNumber);
-        const questionsAnswered = progress?.questionsAnswered?.length || 0;
-        const correctAnswers = progress?.correctAnswers || 0;
-        const accuracy = questionsAnswered > 0 ? ((correctAnswers / questionsAnswered) * 100).toFixed(1) : 0;
+        
+        let questionsAnswered, correctAnswers, accuracy;
+        
+        if (stats) {
+            // Use saved statistics from completed attempts
+            questionsAnswered = stats.questionsAnswered;
+            correctAnswers = stats.correctAnswers;
+            accuracy = stats.accuracy.toFixed(1);
+        } else if (progress) {
+            // Use current in-progress data
+            questionsAnswered = progress.questionsAnswered?.length || 0;
+            correctAnswers = progress.correctAnswers || 0;
+            accuracy = questionsAnswered > 0 ? ((correctAnswers / questionsAnswered) * 100).toFixed(1) : 0;
+        } else {
+            // No data yet
+            questionsAnswered = 0;
+            correctAnswers = 0;
+            accuracy = 0;
+        }
+        
         const isCompleted = level.isCompleted;
         const accuracyClass = accuracy >= 70 ? 'high' : accuracy >= 50 ? 'medium' : 'low';
+        
+        console.log(`Level ${level.levelNumber} (${level.title}):`, {
+            questionsAnswered,
+            correctAnswers,
+            accuracy: accuracy + '%',
+            isCompleted,
+            hasStats: !!stats,
+            hasProgress: !!progress
+        });
         
         html += `
             <div class="level-stat-row">
@@ -1165,7 +1218,7 @@ function renderLevelStatsTable(userData, levelsData) {
                 <div><strong>${level.title}</strong></div>
                 <div>${questionsAnswered} / 15</div>
                 <div class="level-stat-accuracy ${accuracyClass}">${accuracy}%</div>
-                <div>${isCompleted ? '✅ Completed' : questionsAnswered > 0 ? '🔄 In Progress' : '🔒 Not Started'}</div>
+                <div>${isCompleted ? '✅ Completed' + (stats && stats.attemptsCount > 1 ? ` (x${stats.attemptsCount})` : '') : questionsAnswered > 0 ? '🔄 In Progress' : '🔒 Not Started'}</div>
             </div>
         `;
     });
@@ -1294,3 +1347,316 @@ async function getMotivation() {
 
 // Variable to track question start time
 let questionStartTime = null;
+// ========================================
+// REAL-LIFE SCENARIOS SECTION
+// ========================================
+
+let currentScenario = null;
+let currentScenarioQuestion = null;
+let selectedScenarioOption = null;
+
+// Load and display scenarios on dashboard
+async function loadScenarios() {
+    try {
+        const response = await apiCall('/scenarios');
+        
+        if (!response.unlocked) {
+            // Scenarios not yet unlocked
+            document.getElementById('scenarios-section').classList.add('hidden');
+            return;
+        }
+        
+        // Show scenarios section
+        document.getElementById('scenarios-section').classList.remove('hidden');
+        
+        const scenariosGrid = document.getElementById('scenarios-grid');
+        scenariosGrid.innerHTML = response.scenarios.map(scenario => {
+            const statusIcon = scenario.isCompleted ? '✅' : 
+                              scenario.isUnlocked ? '🔓' : '🔒';
+            const cardClass = scenario.isCompleted ? 'completed' : 
+                             scenario.isUnlocked ? '' : 'locked';
+            
+            let progressBadge = '';
+            if (scenario.isCompleted) {
+                progressBadge = `<span class="scenario-complete-badge">✅ Completed</span>`;
+            } else if (scenario.currentQuestion > 1) {
+                progressBadge = `<span class="scenario-progress-badge">In Progress: ${scenario.currentQuestion}/${scenario.totalQuestions}</span>`;
+            }
+            
+            return `
+                <div class="scenario-card ${cardClass}" 
+                     ${scenario.isUnlocked ? `onclick="openScenario(${scenario.scenarioNumber})"` : ''}>
+                    <div class="scenario-header">
+                        <span class="scenario-number">Scenario ${scenario.scenarioNumber}</span>
+                        <span class="scenario-status">${statusIcon}</span>
+                    </div>
+                    <div class="scenario-icon">${scenario.icon}</div>
+                    <h3 class="scenario-title">${scenario.title}</h3>
+                    <p class="scenario-description">${scenario.description}</p>
+                    <div class="scenario-meta">
+                        <span class="scenario-questions">📊 ${scenario.totalQuestions} Questions</span>
+                        ${progressBadge}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Error loading scenarios:', error);
+    }
+}
+
+// Open scenario detail
+async function openScenario(scenarioNumber) {
+    document.getElementById('loading-screen').classList.remove('hidden');
+    
+    try {
+        console.log('📂 Opening scenario:', scenarioNumber);
+        
+        // Refresh user data to ensure we have latest info
+        if (!currentUser) {
+            const userData = await apiCall('/user/profile');
+            currentUser = userData;
+        }
+        
+        const scenarioData = await apiCall(`/scenarios/${scenarioNumber}`);
+        console.log('✅ Scenario data loaded:', scenarioData);
+        currentScenario = scenarioData;
+        
+        // Update user stats in navbar
+        document.getElementById('scenario-balance').textContent = currentUser.virtualBalance || 0;
+        document.getElementById('scenario-points').textContent = currentUser.totalPoints || 0;
+        
+        displayScenarioIntro();
+        showScreen('scenario-detail-screen');
+    } catch (error) {
+        console.error('❌ Error loading scenario:', error);
+        showToast('Failed to load scenario: ' + error.message, 'error');
+    } finally {
+        document.getElementById('loading-screen').classList.add('hidden');
+    }
+}
+
+// Display scenario introduction
+function displayScenarioIntro() {
+    document.getElementById('scenario-icon-large').textContent = currentScenario.icon || '🎯';
+    document.getElementById('scenario-title').textContent = currentScenario.title;
+    document.getElementById('scenario-description').textContent = currentScenario.description;
+    document.getElementById('scenario-total-questions').textContent = currentScenario.totalQuestions;
+    
+    // Update start button
+    const startBtn = document.getElementById('start-scenario-btn');
+    if (currentScenario.currentQuestion > 1) {
+        startBtn.textContent = `Resume (Question ${currentScenario.currentQuestion}/${currentScenario.totalQuestions}) 🚀`;
+    } else {
+        startBtn.textContent = 'Start Scenario 🚀';
+    }
+    
+    // Show intro, hide quiz and complete
+    document.getElementById('scenario-intro').classList.remove('hidden');
+    document.getElementById('scenario-quiz-container').classList.add('hidden');
+    document.getElementById('scenario-complete-container').classList.add('hidden');
+}
+
+// Start scenario quiz
+async function startScenario() {
+    document.getElementById('scenario-intro').classList.add('hidden');
+    document.getElementById('scenario-quiz-container').classList.remove('hidden');
+    
+    // Load the current question
+    await loadScenarioQuestion(currentScenario.currentQuestion);
+}
+
+// Load a specific scenario question
+async function loadScenarioQuestion(questionNumber) {
+    document.getElementById('loading-screen').classList.remove('hidden');
+    selectedScenarioOption = null;
+    
+    try {
+        console.log('📝 Loading scenario question:', currentScenario.scenarioNumber, 'question:', questionNumber);
+        
+        const questionData = await apiCall(
+            `/scenarios/${currentScenario.scenarioNumber}/question/${questionNumber}`
+        );
+        
+        console.log('✅ Question data received:', questionData);
+        currentScenarioQuestion = questionData;
+        
+        // Update progress
+        document.getElementById('scenario-current-question').textContent = questionNumber;
+        document.getElementById('scenario-total-qs').textContent = currentScenario.totalQuestions;
+        const progressPercent = (questionNumber / currentScenario.totalQuestions) * 100;
+        document.getElementById('scenario-progress-fill').style.width = progressPercent + '%';
+        
+        // Display situation and context
+        document.getElementById('scenario-situation').textContent = questionData.situation;
+        document.getElementById('scenario-money-context').textContent = questionData.virtualMoneyContext;
+        document.getElementById('scenario-question').textContent = questionData.question;
+        
+        // Display options
+        const optionsHtml = questionData.options.map((option, index) => {
+            const letter = String.fromCharCode(65 + index); // A, B, C, D
+            return `
+                <div class="scenario-option" onclick="selectScenarioOption(${index})">
+                    <div class="option-letter">${letter}</div>
+                    <div class="option-text">${option}</div>
+                </div>
+            `;
+        }).join('');
+        
+        document.getElementById('scenario-options').innerHTML = optionsHtml;
+        document.getElementById('submit-scenario-answer').disabled = true;
+    } catch (error) {
+        console.error('❌ Error loading question:', error);
+        showToast('Failed to load question: ' + error.message, 'error');
+    } finally {
+        document.getElementById('loading-screen').classList.add('hidden');
+    }
+}
+
+// Select scenario option
+function selectScenarioOption(index) {
+    selectedScenarioOption = index;
+    
+    // Update UI
+    document.querySelectorAll('.scenario-option').forEach((opt, i) => {
+        if (i === index) {
+            opt.classList.add('selected');
+        } else {
+            opt.classList.remove('selected');
+        }
+    });
+    
+    document.getElementById('submit-scenario-answer').disabled = false;
+}
+
+// Submit scenario answer
+async function submitScenarioAnswer() {
+    if (selectedScenarioOption === null) {
+        showToast('Please select an option first!', 'warning');
+        return;
+    }
+    
+    console.log('📤 Submitting answer:', {
+        scenarioNumber: currentScenario.scenarioNumber,
+        questionNumber: currentScenarioQuestion.questionNumber,
+        userAnswer: selectedScenarioOption
+    });
+    
+    document.getElementById('loading-screen').classList.remove('hidden');
+    
+    try {
+        const response = await apiCall(`/scenarios/${currentScenario.scenarioNumber}/answer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                questionNumber: currentScenarioQuestion.questionNumber,
+                userAnswer: selectedScenarioOption
+            })
+        });
+        
+        console.log('✅ Answer response:', response);
+        
+        // Update user points
+        currentUser.totalPoints = response.totalPoints;
+        document.getElementById('scenario-points').textContent = response.totalPoints;
+        document.getElementById('points').textContent = response.totalPoints;
+        
+        if (response.isCorrect) {
+            // Correct answer - show feedback and continue
+            playCheerSound();
+            showToast(`✅ Correct! +${response.pointsChange} points`, 'success');
+            
+            // Wait a bit, then load next question or complete
+            setTimeout(() => {
+                if (response.isScenarioComplete) {
+                    displayScenarioComplete(response.progress);
+                } else {
+                    loadScenarioQuestion(response.currentQuestion);
+                }
+            }, 1500);
+        } else {
+            // Wrong answer - show explanation
+            playErrorSound();
+            showToast(`❌ Wrong! ${response.pointsChange} points`, 'error');
+            
+            // Show explanation modal
+            document.getElementById('scenario-explanation-text').innerHTML = `
+                <div style="background: #fef2f2; padding: 15px; border-radius: 10px; margin-bottom: 15px; border-left: 4px solid #ef4444;">
+                    <strong style="color: #991b1b;">Your answer was incorrect.</strong>
+                    <p style="color: #7f1d1d; margin-top: 8px;">Points deducted: ${response.pointsChange}</p>
+                </div>
+                <div style="background: #f0fdf4; padding: 15px; border-radius: 10px; border-left: 4px solid #22c55e;">
+                    <h4 style="color: #166534; margin-bottom: 10px;">💡 Why this matters:</h4>
+                    <p style="color: #15803d; line-height: 1.7;">${response.explanation}</p>
+                </div>
+                ${response.nextQuestionContext ? `
+                <div style="background: #fef3c7; padding: 15px; border-radius: 10px; margin-top: 15px; border-left: 4px solid #f59e0b;">
+                    <h4 style="color: #92400e; margin-bottom: 10px;">📖 Story continues...</h4>
+                    <p style="color: #78350f; line-height: 1.7;">${response.nextQuestionContext}</p>
+                </div>
+                ` : ''}
+            `;
+            
+            // Store response for later
+            window.pendingScenarioResponse = response;
+            document.getElementById('scenario-explanation-modal').classList.remove('hidden');
+        }
+    } catch (error) {
+        console.error('❌ Error submitting answer:', error);
+        console.error('Error details:', error.message);
+        showToast('Failed to submit answer: ' + error.message, 'error');
+    } finally {
+        document.getElementById('loading-screen').classList.add('hidden');
+    }
+}
+
+// Continue after explanation
+function continueAfterExplanation() {
+    document.getElementById('scenario-explanation-modal').classList.add('hidden');
+    
+    const response = window.pendingScenarioResponse;
+    if (response) {
+        if (response.isScenarioComplete) {
+            displayScenarioComplete(response.progress);
+        } else {
+            loadScenarioQuestion(response.currentQuestion);
+        }
+        window.pendingScenarioResponse = null;
+    }
+}
+
+// Display scenario completion
+function displayScenarioComplete(progress) {
+    document.getElementById('scenario-quiz-container').classList.add('hidden');
+    document.getElementById('scenario-complete-container').classList.remove('hidden');
+    
+    document.getElementById('scenario-final-correct').textContent = progress.correctAnswers;
+    document.getElementById('scenario-final-wrong').textContent = progress.wrongAnswers;
+    document.getElementById('scenario-final-points').textContent = progress.totalPointsEarned;
+    document.getElementById('scenario-final-lost').textContent = progress.totalPointsLost;
+    
+    createCoinSplash();
+    playCheerSound();
+}
+
+// Replay scenario
+async function replayScenario() {
+    if (!confirm('This will reset your progress in this scenario. Continue?')) return;
+    
+    document.getElementById('loading-screen').classList.remove('hidden');
+    
+    try {
+        await apiCall(`/scenarios/${currentScenario.scenarioNumber}/reset`, {
+            method: 'POST'
+        });
+        
+        // Reload the scenario
+        await openScenario(currentScenario.scenarioNumber);
+        showToast('Scenario reset! Good luck! 🚀', 'success');
+    } catch (error) {
+        console.error('Error resetting scenario:', error);
+        showToast('Failed to reset scenario', 'error');
+    } finally {
+        document.getElementById('loading-screen').classList.add('hidden');
+    }
+}

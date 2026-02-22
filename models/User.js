@@ -36,7 +36,18 @@ const userSchema = new mongoose.Schema({
   completedLevels: [{
     type: Number
   }],
-  // Track progress within each level
+  // Permanent statistics for completed levels (for profile display)
+  completedLevelStats: [{
+    levelNumber: { type: Number, required: true },
+    questionsAnswered: { type: Number, default: 0 },
+    correctAnswers: { type: Number, default: 0 },
+    accuracy: { type: Number, default: 0 }, // Percentage
+    pointsEarned: { type: Number, default: 0 },
+    coinsEarned: { type: Number, default: 0 },
+    completedAt: { type: Date, default: Date.now },
+    attemptsCount: { type: Number, default: 1 } // Track how many times completed
+  }],
+  // Track progress within each level (current attempt - gets cleared on completion)
   levelProgress: [{
     levelNumber: { type: Number, required: true },
     questionsAnswered: [{ type: String }], // Array of question IDs
@@ -97,6 +108,29 @@ const userSchema = new mongoose.Schema({
     topic: String,
     timestamp: Date,
     helpful: Boolean
+  }],
+  // Real-Life Financial Scenarios Progress
+  scenarioProgress: [{
+    scenarioNumber: { type: Number, required: true },
+    currentQuestion: { type: Number, default: 1 },
+    answeredQuestions: [{
+      questionNumber: { type: Number, required: true },
+      userAnswer: { type: mongoose.Schema.Types.Mixed }, // Can be number or boolean
+      isCorrect: { type: Boolean, required: true },
+      pointsChange: { type: Number, required: true },
+      answeredAt: { type: Date, default: Date.now }
+    }],
+    correctAnswers: { type: Number, default: 0 },
+    wrongAnswers: { type: Number, default: 0 },
+    totalPointsEarned: { type: Number, default: 0 },
+    totalPointsLost: { type: Number, default: 0 },
+    isCompleted: { type: Boolean, default: false },
+    startedAt: { type: Date, default: Date.now },
+    completedAt: Date,
+    lastUpdated: { type: Date, default: Date.now }
+  }],
+  completedScenarios: [{
+    type: Number
   }],
   // India-specific profile data
   preferredLanguage: {

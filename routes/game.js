@@ -14,9 +14,9 @@ router.get('/levels', authMiddleware, async (req, res) => {
     
     const levelsWithStatus = levels.map(level => ({
       ...level.toObject(),
+      // Only unlock Level 1 by default, or unlock next level after completing previous one
       isUnlocked: level.levelNumber === 1 || 
-                  user.completedLevels.includes(level.levelNumber - 1) ||
-                  (user.virtualBalance >= level.unlockCost && level.levelNumber <= user.currentLevel + 1),
+                  user.completedLevels.includes(level.levelNumber - 1),
       isCompleted: user.completedLevels.includes(level.levelNumber)
     }));
 
@@ -322,9 +322,52 @@ router.post('/complete-level', authMiddleware, async (req, res) => {
     const user = await User.findById(req.userId);
     const level = await Level.findOne({ levelNumber });
 
-    // Initialize levelProgress if it doesn't exist (for old users)
-    if (!user.levelProgress) {
-      user.levelProgress = [];
+    // Initialize arrays if they don't exist (for old users)
+    if (!user.levelProgress) user.levelProgress = [];
+    if (!user.completedLevelStats) user.completedLevelStats = [];
+
+    // Get current progress for this level
+    const currentProgress = user.levelProgress.find(lp => lp.levelNumber === levelNumber);
+    
+    if (currentProgress) {
+      const questionsAnswered = currentProgress.questionsAnswered.length;
+      const correctAnswers = currentProgress.correctAnswers;
+      const accuracy = questionsAnswered > 0 ? (correctAnswers / questionsAnswered) * 100 : 0;
+      
+      // Save or update permanent statistics
+      let stats = user.completedLevelStats.find(cls => cls.levelNumber === levelNumber);
+      
+      if (stats) {
+        // User is replaying - update stats if this attempt is better
+        stats.attemptsCount += 1;
+        // Always keep the best performance
+        if (accuracy > stats.accuracy) {
+          stats.questionsAnswered = questionsAnswered;
+          stats.correctAnswers = correctAnswers;
+          stats.accuracy = accuracy;
+          stats.pointsEarned = currentProgress.pointsEarned;
+          stats.coinsEarned = currentProgress.coinsEarned;
+        }
+        stats.completedAt = new Date(); // Update last completion time
+      } else {
+        // First time completing this level
+        user.completedLevelStats.push({
+          levelNumber,
+          questionsAnswered,
+          correctAnswers,
+          accuracy,
+          pointsEarned: currentProgress.pointsEarned,
+          coinsEarned: currentProgress.coinsEarned,
+          completedAt: new Date(),
+          attemptsCount: 1
+        });
+      }
+      
+      console.log(`📊 Saved statistics for Level ${levelNumber}:`, {
+        questionsAnswered,
+        correctAnswers,
+        accuracy: accuracy.toFixed(1) + '%'
+      });
     }
 
     if (!user.completedLevels.includes(levelNumber)) {
@@ -341,12 +384,13 @@ router.post('/complete-level', authMiddleware, async (req, res) => {
       if (user.completedLevels.length === 10 && !user.achievements.some(a => a.name === 'Finance Master')) {
         user.achievements.push({ name: 'Finance Master', earnedAt: new Date() });
       }
-
-      // Clear level progress after completion
-      user.levelProgress = user.levelProgress.filter(lp => lp.levelNumber !== levelNumber);
-
-      await user.save();
     }
+
+    // Clear current progress so user can replay the level with fresh start
+    user.levelProgress = user.levelProgress.filter(lp => lp.levelNumber !== levelNumber);
+    console.log(`🔄 Cleared progress for Level ${levelNumber} - ready for replay!`);
+
+    await user.save();
 
     res.json({
       message: 'Level completed!',
@@ -356,6 +400,7 @@ router.post('/complete-level', authMiddleware, async (req, res) => {
       achievements: user.achievements
     });
   } catch (error) {
+    console.error('Error completing level:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
