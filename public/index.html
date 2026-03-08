@@ -90,9 +90,16 @@
                     </div>
                     <!-- Blogs Button -->
                     <button class="btn btn-primary" onclick="window.location.href='/blog.html'" style="margin: 0 10px;">📰 Blogs</button>
+                    <!-- Quiz Rush Button -->
+                    <button class="btn btn-success" onclick="window.location.href='/quiz-rush.html'" style="margin: 0 10px; background: linear-gradient(135deg, #11998e, #38ef7d);">⚡ Quiz Rush</button>
+                    <!-- Snake & Ladder Game Button -->
+                    <button class="btn btn-primary" onclick="window.location.href='/snake-ladder.html'" style="margin: 0 10px;">🎲 Snake & Ladder</button>
                     <!-- Profile Dropdown -->
                     <div class="dropdown">
-                        <button class="btn btn-secondary dropdown-btn" id="profile-btn">👤 Profile</button>
+                        <button class="profile-btn-header dropdown-btn" id="profile-btn">
+                            <img id="header-profile-img" class="header-profile-img" src="" alt="Profile" style="display: none;">
+                            <div id="header-profile-default" class="header-profile-default">👤</div>
+                        </button>
                         <div class="dropdown-menu" id="profile-menu">
                             <a href="#" id="view-profile">👤 My Profile</a>
                             <a href="#" id="header-logout">🚪 Logout</a>
@@ -374,7 +381,14 @@
 
         <div class="container">
             <div class="profile-header">
-                <div class="profile-avatar">👤</div>
+                <div class="profile-avatar-container">
+                    <img id="profile-avatar-img" class="profile-avatar-img" src="" alt="Profile Picture" style="display: none;">
+                    <div id="profile-avatar-default" class="profile-avatar">👤</div>
+                    <input type="file" id="profile-picture-input" accept="image/*" style="display: none;">
+                    <button id="change-profile-picture" class="change-picture-btn">
+                        <span>📷</span>
+                    </button>
+                </div>
                 <div class="profile-info">
                     <h2 id="profile-username">Username</h2>
                     <p id="profile-email">email@example.com</p>

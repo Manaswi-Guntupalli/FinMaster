@@ -499,11 +499,20 @@
             submitLoading.style.display = 'inline';
 
             try {
-                const token = localStorage.getItem('token');
+                const token = localStorage.getItem('finmaster_token');
                 if (!token) {
-                    window.location.href = '/';
+                    showMessage('❌ Please login to create blog posts', 'error');
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 2000);
                     return;
                 }
+
+                console.log('Submitting blog post...');
+                console.log('Title:', document.getElementById('title').value);
+                console.log('Excerpt:', document.getElementById('excerpt').value);
+                console.log('Tags:', tags);
+                console.log('Has image:', imageFile ? 'Yes' : 'No');
 
                 const response = await fetch('/api/blog/create', {
                     method: 'POST',
@@ -514,6 +523,7 @@
                 });
 
                 const data = await response.json();
+                console.log('Server response:', data);
 
                 if (response.ok) {
                     showMessage('✅ Blog post published successfully!', 'success');
@@ -521,6 +531,7 @@
                         window.location.href = '/blog.html';
                     }, 1500);
                 } else {
+                    console.error('Server error:', response.status, data);
                     showMessage(`❌ ${data.message || 'Failed to publish blog post'}`, 'error');
                     submitBtn.disabled = false;
                     submitText.style.display = 'inline';
@@ -529,7 +540,7 @@
 
             } catch (error) {
                 console.error('Error creating blog:', error);
-                showMessage('❌ Error creating blog post. Please try again.', 'error');
+                showMessage(`❌ Error: ${error.message || 'Failed to connect to server. Is it running?'}`, 'error');
                 submitBtn.disabled = false;
                 submitText.style.display = 'inline';
                 submitLoading.style.display = 'none';
@@ -552,7 +563,7 @@
 
         // Check authentication on page load
         document.addEventListener('DOMContentLoaded', () => {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('finmaster_token');
             if (!token) {
                 alert('Please login to create blog posts');
                 window.location.href = '/';

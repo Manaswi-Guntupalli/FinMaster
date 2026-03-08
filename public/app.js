@@ -244,6 +244,10 @@ async function loadDashboard() {
         
         currentUser = userData;
         updateDashboardUI(userData, levels);
+        
+        // Update profile picture in header
+        updateProfilePicture(userData.profilePicture);
+        
         showScreen('dashboard-screen');
         
         // Load scenarios (if unlocked)
@@ -882,6 +886,18 @@ document.addEventListener('DOMContentLoaded', () => {
         loadDashboard();
     });
     
+    // Profile Picture Upload
+    document.getElementById('change-profile-picture').addEventListener('click', () => {
+        document.getElementById('profile-picture-input').click();
+    });
+    
+    document.getElementById('profile-picture-input').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            await uploadProfilePicture(file);
+        }
+    });
+    
     // AI Insights modal actions (from dashboard)
     document.getElementById('header-analyze-weak-topics').addEventListener('click', (e) => {
         e.preventDefault();
@@ -1022,6 +1038,9 @@ async function loadProfileScreen() {
         document.getElementById('profile-points').textContent = userData.totalPoints;
         document.getElementById('profile-completed').textContent = userData.completedLevels.length;
         document.getElementById('profile-streak').textContent = userData.streak;
+        
+        // Update profile picture
+        updateProfilePicture(userData.profilePicture);
         
         // Render charts
         renderProfileCharts(userData, levelsData);
@@ -1224,6 +1243,82 @@ function renderLevelStatsTable(userData, levelsData) {
     });
     
     tableContainer.innerHTML = html;
+}
+
+// ===== PROFILE PICTURE MANAGEMENT =====
+
+async function uploadProfilePicture(file) {
+    try {
+        // Validate file size (5MB max)
+        if (file.size > 5 * 1024 * 1024) {
+            showToast('Image must be less than 5MB', 'error');
+            return;
+        }
+        
+        // Validate file type
+        if (!file.type.match(/image\/(jpeg|jpg|png|gif)/)) {
+            showToast('Only JPG, PNG, and GIF images are allowed', 'error');
+            return;
+        }
+        
+        console.log('Uploading file:', file.name, file.type, file.size);
+        console.log('Auth token:', authToken ? 'exists' : 'missing');
+        
+        const formData = new FormData();
+        formData.append('profilePicture', file);
+        
+        const response = await fetch(`${API_URL}/user/upload-profile-picture`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: formData
+        });
+        
+        console.log('Response status:', response.status);
+        
+        const data = await response.json();
+        console.log('Response data:', data);
+        
+        if (!response.ok) {
+            throw new Error(data.message || 'Upload failed');
+        }
+        
+        updateProfilePicture(data.profilePicture);
+        showToast('Profile picture updated successfully! 📸', 'success');
+        
+    } catch (error) {
+        console.error('Error uploading profile picture:', error);
+        showToast(error.message || 'Failed to upload profile picture', 'error');
+    }
+}
+
+function updateProfilePicture(profilePicturePath) {
+    // Update profile page avatar
+    const profileImg = document.getElementById('profile-avatar-img');
+    const profileDefault = document.getElementById('profile-avatar-default');
+    
+    // Update header avatar
+    const headerImg = document.getElementById('header-profile-img');
+    const headerDefault = document.getElementById('header-profile-default');
+    
+    if (profilePicturePath) {
+        // Show images, hide defaults
+        profileImg.src = profilePicturePath;
+        profileImg.style.display = 'block';
+        profileDefault.style.display = 'none';
+        
+        headerImg.src = profilePicturePath;
+        headerImg.style.display = 'block';
+        headerDefault.style.display = 'none';
+    } else {
+        // Show defaults, hide images
+        profileImg.style.display = 'none';
+        profileDefault.style.display = 'flex';
+        
+        headerImg.style.display = 'none';
+        headerDefault.style.display = 'flex';
+    }
 }
 
 // ===== AI INSIGHTS MODAL =====

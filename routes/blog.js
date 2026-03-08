@@ -44,41 +44,78 @@ const upload = multer({
 // @route   POST /api/blog/create
 // @desc    Create a new blog post
 // @access  Private (Authenticated users)
-router.post('/create', auth, upload.single('featuredImage'), async (req, res) => {
+router.post('/create', auth, (req, res, next) => {
+  upload.single('featuredImage')(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      console.error('❌ Multer error:', err);
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: 'File size too large. Maximum size is 5MB.' });
+      }
+      return res.status(400).json({ message: `Upload error: ${err.message}` });
+    } else if (err) {
+      console.error('❌ Upload error:', err);
+      return res.status(400).json({ message: err.message });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
+    console.log('📝 Blog creation request received');
+    console.log('User ID:', req.userId);
+    console.log('Request body:', { ...req.body, content: req.body.content ? `${req.body.content.substring(0, 50)}...` : 'none' });
+    console.log('File uploaded:', req.file ? req.file.filename : 'No file');
+
     const { title, excerpt, content, tags } = req.body;
 
     // Validate required fields
     if (!title || !excerpt || !content) {
+      console.log('❌ Validation failed: Missing required fields');
       return res.status(400).json({ message: 'Title, excerpt, and content are required' });
     }
 
     // Get author details
     const user = await User.findById(req.userId);
     if (!user) {
+      console.log('❌ User not found:', req.userId);
       return res.status(404).json({ message: 'User not found' });
     }
 
+    console.log('✅ User found:', user.username);
+
     // Prepare blog data
+    let parsedTags = [];
+    if (tags) {
+      try {
+        // Try to parse as JSON first (if sent from frontend as JSON string)
+        parsedTags = JSON.parse(tags);
+        console.log('✅ Parsed tags from JSON:', parsedTags);
+      } catch (e) {
+        // If not JSON, treat as comma-separated string or array
+        parsedTags = Array.isArray(tags) ? tags : tags.split(',').map(tag => tag.trim());
+        console.log('✅ Parsed tags from string/array:', parsedTags);
+      }
+    }
+
     const blogData = {
       title,
       excerpt,
       content,
       author: req.userId,
       authorName: user.username,
-      tags: tags ? (Array.isArray(tags) ? tags : tags.split(',').map(tag => tag.trim())) : []
+      tags: parsedTags
     };
 
     // Add featured image if uploaded
     if (req.file) {
       blogData.featuredImage = '/uploads/blogs/' + req.file.filename;
+      console.log('✅ Featured image added:', blogData.featuredImage);
     }
 
     // Create blog post
     const blog = new Blog(blogData);
     await blog.save();
 
-    console.log('✅ Blog created:', blog.title, 'by', user.username);
+    console.log('✅ Blog created successfully:', blog.title, 'by', user.username);
 
     res.status(201).json({
       message: 'Blog post created successfully!',
@@ -87,6 +124,7 @@ router.post('/create', auth, upload.single('featuredImage'), async (req, res) =>
 
   } catch (error) {
     console.error('❌ Error creating blog:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({ message: 'Failed to create blog post', error: error.message });
   }
 });
@@ -177,7 +215,15 @@ router.put('/:id', auth, upload.single('featuredImage'), async (req, res) => {
     if (title) blog.title = title;
     if (excerpt) blog.excerpt = excerpt;
     if (content) blog.content = content;
-    if (tags) blog.tags = Array.isArray(tags) ? tags : tags.split(',').map(tag => tag.trim());
+    if (tags) {
+      try {
+        // Try to parse as JSON first (if sent from frontend as JSON string)
+        blog.tags = JSON.parse(tags);
+      } catch (e) {
+        // If not JSON, treat as comma-separated string or array
+        blog.tags = Array.isArray(tags) ? tags : tags.split(',').map(tag => tag.trim());
+      }
+    }
     if (isPublished !== undefined) blog.isPublished = isPublished;
 
     // Update featured image if new one uploaded
