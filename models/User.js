@@ -37,6 +37,19 @@ const userSchema = new mongoose.Schema({
     type: Number,
     default: 1
   },
+  overallSkillRating: {
+    type: Number,
+    default: 1000
+  },
+  lastAdaptiveRecommendation: {
+    suggestedDifficulty: {
+      type: String,
+      enum: ['easy', 'medium', 'hard'],
+      default: 'medium'
+    },
+    reason: String,
+    updatedAt: Date
+  },
   completedLevels: [{
     type: Number
   }],
@@ -56,6 +69,7 @@ const userSchema = new mongoose.Schema({
     levelNumber: { type: Number, required: true },
     questionsAnswered: [{ type: String }], // Array of question IDs
     correctAnswers: { type: Number, default: 0 },
+    consecutiveWrongAnswers: { type: Number, default: 0 },
     pointsEarned: { type: Number, default: 0 },
     coinsEarned: { type: Number, default: 0 },
     selectedQuestions: [{ type: String }], // IDs of the random questions selected for this level
@@ -91,7 +105,10 @@ const userSchema = new mongoose.Schema({
     correctAnswers: { type: Number, default: 0 },
     averageTimeSpent: { type: Number, default: 0 },
     lastAttempted: Date,
-    difficultyLevel: { type: String, enum: ['easy', 'medium', 'hard'], default: 'medium' }
+    difficultyLevel: { type: String, enum: ['easy', 'medium', 'hard'], default: 'medium' },
+    skillRating: { type: Number, default: 1000 },
+    confidence: { type: Number, default: 0 },
+    lastAdaptiveDelta: { type: Number, default: 0 }
   }],
   // AI-identified weak areas
   weakTopics: [{

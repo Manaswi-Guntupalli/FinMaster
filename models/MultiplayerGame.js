@@ -16,6 +16,9 @@ const multiplayerGameSchema = new mongoose.Schema({
         userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
         username: String,
         avatar: String,
+        isBot: { type: Boolean, default: false },
+        statusMessage: String,
+        averageTime: { type: Number, default: 0 },
         score: { type: Number, default: 0 },
         correctAnswers: { type: Number, default: 0 },
         totalAnswers: { type: Number, default: 0 },
@@ -31,6 +34,9 @@ const multiplayerGameSchema = new mongoose.Schema({
         userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
         username: String,
         avatar: String,
+        isBot: { type: Boolean, default: false },
+        statusMessage: String,
+        averageTime: { type: Number, default: 0 },
         score: { type: Number, default: 0 },
         correctAnswers: { type: Number, default: 0 },
         totalAnswers: { type: Number, default: 0 },
@@ -45,9 +51,27 @@ const multiplayerGameSchema = new mongoose.Schema({
     questions: [{
         questionId: String,
         category: String,
+        topic: String,
         difficulty: String,
-        correctAnswer: Number
+        correctAnswer: Number,
+        question: String,
+        options: [String]
     }],
+    botProfile: {
+        mode: {
+            type: String,
+            enum: ['easy', 'medium', 'hard', 'adaptive'],
+            default: 'adaptive'
+        },
+        displayName: String,
+        accuracyTarget: Number,
+        minDelayMs: Number,
+        maxDelayMs: Number,
+        personality: String,
+        catchupFactor: { type: Number, default: 0 },
+        lastReaction: String,
+        lastStatus: String
+    },
     status: {
         type: String,
         enum: ['waiting', 'ready', 'playing', 'finished'],

@@ -3,6 +3,14 @@ const authMiddleware = require('../middleware/auth');
 const User = require('../models/User');
 const Level = require('../models/Level');
 const Question = require('../models/Question');
+const {
+  deriveDifficultyFromRating,
+  deriveSkillBand,
+  getOverallUserRating,
+  buildAdaptiveRecommendation,
+  updateUserAdaptiveProfile
+} = require('../services/adaptiveEngine');
+const { getDifficultyReward } = require('../services/rewardEngine');
 
 const router = express.Router();
 
@@ -121,7 +129,13 @@ router.get('/levels/:levelNumber', authMiddleware, async (req, res) => {
     }
     
     if (!levelProgress || !selectedQuestions) {
-      // Select 5 questions from each difficulty level randomly
+      const preferredDifficulty = deriveDifficultyFromRating(getOverallUserRating(user));
+      const quotaByDifficulty = preferredDifficulty === 'hard'
+        ? { easy: 3, medium: 5, hard: 7 }
+        : preferredDifficulty === 'easy'
+          ? { easy: 7, medium: 5, hard: 3 }
+          : { easy: 5, medium: 5, hard: 5 };
+
       const easyQuestions = await Question.find({ 
         levelNumber: req.params.levelNumber, 
         difficulty: 'easy' 
@@ -135,15 +149,24 @@ router.get('/levels/:levelNumber', authMiddleware, async (req, res) => {
         difficulty: 'hard' 
       });
       
-      // Randomly select 5 from each difficulty (or all if less than 5)
-      const selectedEasy = shuffleArray(easyQuestions).slice(0, 5);
-      const selectedMedium = shuffleArray(mediumQuestions).slice(0, 5);
-      const selectedHard = shuffleArray(hardQuestions).slice(0, 5);
-      
-      // Combine: Easy first → Medium → Hard (proper difficulty flow)
+      const selectedEasy = shuffleArray(easyQuestions).slice(0, quotaByDifficulty.easy);
+      const selectedMedium = shuffleArray(mediumQuestions).slice(0, quotaByDifficulty.medium);
+      const selectedHard = shuffleArray(hardQuestions).slice(0, quotaByDifficulty.hard);
+
       selectedQuestions = [...selectedEasy, ...selectedMedium, ...selectedHard];
+
+      if (selectedQuestions.length < 15) {
+        const selectedIds = new Set(selectedQuestions.map(question => question._id.toString()));
+        const fallbackQuestions = shuffleArray([
+          ...easyQuestions,
+          ...mediumQuestions,
+          ...hardQuestions
+        ]).filter(question => !selectedIds.has(question._id.toString()));
+        selectedQuestions = [...selectedQuestions, ...fallbackQuestions.slice(0, 15 - selectedQuestions.length)];
+      }
       
       console.log('📊 Question Selection:', {
+        preferredDifficulty,
         availableEasy: easyQuestions.length,
         availableMedium: mediumQuestions.length,
         availableHard: hardQuestions.length,
@@ -161,6 +184,7 @@ router.get('/levels/:levelNumber', authMiddleware, async (req, res) => {
           levelNumber: parseInt(req.params.levelNumber),
           questionsAnswered: [],
           correctAnswers: 0,
+          consecutiveWrongAnswers: 0,
           pointsEarned: 0,
           coinsEarned: 0,
           selectedQuestions: selectedQuestions.map(q => q._id.toString()),
@@ -181,15 +205,23 @@ router.get('/levels/:levelNumber', authMiddleware, async (req, res) => {
     
     // Return questions with answered status
     const answeredIds = levelProgress ? levelProgress.questionsAnswered : [];
+    const remainingQuestions = selectedQuestions.filter(question => !answeredIds.includes(question._id.toString()));
+    const remainingCounts = countRemainingDifficulties(remainingQuestions);
+    const suggestedDifficulty = answeredIds.length === 0
+      ? 'easy'
+      : (user.lastAdaptiveRecommendation?.suggestedDifficulty || deriveDifficultyFromRating(getOverallUserRating(user)));
     
     res.json({
       level,
       questions: selectedQuestions.map(q => ({
+        ...getDifficultyReward(q.difficulty),
         _id: q._id,
         question: q.question,
         options: q.options,
-        points: q.points,
         difficulty: q.difficulty,
+        topic: q.topic,
+        category: q.category,
+        estimatedTime: q.estimatedTime,
         isAnswered: answeredIds.includes(q._id.toString())
       })),
       progress: levelProgress ? {
@@ -198,7 +230,17 @@ router.get('/levels/:levelNumber', authMiddleware, async (req, res) => {
         correctAnswers: levelProgress.correctAnswers,
         pointsEarned: levelProgress.pointsEarned,
         coinsEarned: levelProgress.coinsEarned
-      } : null
+      } : null,
+      adaptiveRecommendation: {
+        suggestedDifficulty,
+        difficultyOrder: [suggestedDifficulty, 'medium', 'easy', 'hard'].filter((difficulty, index, array) => {
+          return array.indexOf(difficulty) === index && remainingCounts[difficulty] > 0;
+        }),
+        skillBand: deriveSkillBand(getOverallUserRating(user)),
+        skillRating: getOverallUserRating(user),
+        reason: user.lastAdaptiveRecommendation?.reason || 'FinMaster is calibrating your next challenge using your answer history and pace.',
+        remainingCounts
+      }
     });
     
     console.log('📤 Returning response with progress:', levelProgress ? 'YES' : 'NO');
@@ -221,6 +263,14 @@ function shuffleArray(array) {
   return shuffled;
 }
 
+function countRemainingDifficulties(questions) {
+  return questions.reduce((counts, question) => {
+    const difficulty = question.difficulty || 'medium';
+    counts[difficulty] = (counts[difficulty] || 0) + 1;
+    return counts;
+  }, { easy: 0, medium: 0, hard: 0 });
+}
+
 // Submit answer
 router.post('/submit-answer', authMiddleware, async (req, res) => {
   try {
@@ -232,6 +282,7 @@ router.post('/submit-answer', authMiddleware, async (req, res) => {
     }
 
     const isCorrect = question.correctAnswer === selectedAnswer;
+    const reward = getDifficultyReward(question.difficulty);
     const user = await User.findById(req.userId);
 
     // Initialize levelProgress if it doesn't exist (for old users)
@@ -253,8 +304,9 @@ router.post('/submit-answer', authMiddleware, async (req, res) => {
         levelNumber: question.levelNumber,
         questionsAnswered: [questionId],
         correctAnswers: isCorrect ? 1 : 0,
-        pointsEarned: isCorrect ? question.points : 0,
-        coinsEarned: isCorrect ? 50 : 0,
+        consecutiveWrongAnswers: isCorrect ? 0 : 1,
+        pointsEarned: isCorrect ? reward.points : 0,
+        coinsEarned: isCorrect ? reward.coins : 0,
         selectedQuestions: [],
         startedAt: new Date(),
         lastUpdated: new Date()
@@ -266,8 +318,11 @@ router.post('/submit-answer', authMiddleware, async (req, res) => {
         
         if (isCorrect) {
           levelProgress.correctAnswers += 1;
-          levelProgress.pointsEarned += question.points;
-          levelProgress.coinsEarned += 50;
+          levelProgress.consecutiveWrongAnswers = 0;
+          levelProgress.pointsEarned += reward.points;
+          levelProgress.coinsEarned += reward.coins;
+        } else {
+          levelProgress.consecutiveWrongAnswers = (levelProgress.consecutiveWrongAnswers || 0) + 1;
         }
         
         levelProgress.lastUpdated = new Date();
@@ -300,14 +355,19 @@ router.post('/submit-answer', authMiddleware, async (req, res) => {
         correctAnswers: isCorrect ? 1 : 0,
         averageTimeSpent: timeSpent || 30,
         lastAttempted: new Date(),
-        difficultyLevel: question.difficulty
+        difficultyLevel: question.difficulty,
+        skillRating: user.overallSkillRating || 1000,
+        confidence: 1,
+        lastAdaptiveDelta: 0
       });
     }
 
+    const skillSnapshot = updateUserAdaptiveProfile(user, question, isCorrect, timeSpent || 30);
+
     let newBadges = [];
     if (isCorrect) {
-      user.totalPoints += question.points;
-      user.virtualBalance += 50; // Earn coins for correct answer
+      user.totalPoints += reward.points;
+      user.virtualBalance += reward.coins;
       user.streak += 1;
 
       // Check for streak achievements
@@ -332,6 +392,27 @@ router.post('/submit-answer', authMiddleware, async (req, res) => {
     }
 
     const finalProgress = user.levelProgress.find(lp => lp.levelNumber === question.levelNumber);
+    let adaptiveRecommendation = null;
+
+    if (finalProgress?.selectedQuestions?.length) {
+      const remainingQuestionDocs = await Question.find({
+        _id: {
+          $in: finalProgress.selectedQuestions.filter(selectedId => !finalProgress.questionsAnswered.includes(selectedId))
+        }
+      });
+      const remainingCounts = countRemainingDifficulties(remainingQuestionDocs);
+      adaptiveRecommendation = buildAdaptiveRecommendation({
+        rating: skillSnapshot.topicRating,
+        isCorrect,
+        timeSpent: timeSpent || 30,
+        question,
+        topicEntry: skillSnapshot.topicEntry,
+        remainingCounts,
+        consecutiveWrongAnswers: finalProgress.consecutiveWrongAnswers || 0
+      });
+      adaptiveRecommendation.remainingCounts = remainingCounts;
+    }
+
     console.log('✅ Progress saved for level', question.levelNumber);
     console.log('   Questions answered:', finalProgress?.questionsAnswered.length || 0);
     console.log('   Correct answers:', finalProgress?.correctAnswers || 0);
@@ -341,15 +422,21 @@ router.post('/submit-answer', authMiddleware, async (req, res) => {
       correct: isCorrect,
       explanation: question.explanation,
       correctAnswer: question.correctAnswer,
-      points: isCorrect ? question.points : 0,
-      coinsEarned: isCorrect ? 50 : 0,
+      points: isCorrect ? reward.points : 0,
+      coinsEarned: isCorrect ? reward.coins : 0,
       newBalance: user.virtualBalance,
       newPoints: user.totalPoints,
       streak: user.streak,
       newAchievements: isCorrect && user.streak === 5 ? ['Hot Streak'] : [],
       newBadges: newBadges,
       topic: question.topic,
-      category: question.category
+      category: question.category,
+      adaptiveRecommendation,
+      skillSnapshot: {
+        topicRating: skillSnapshot.topicRating,
+        overallRating: skillSnapshot.overallRating,
+        skillBand: deriveSkillBand(skillSnapshot.topicRating)
+      }
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });

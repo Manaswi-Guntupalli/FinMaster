@@ -2454,6 +2454,86 @@ const questions = [
     correctAnswer: 1,
     explanation: "Dynasty trusts (in states allowing perpetual trusts) can last for generations, avoiding estate taxes at each generational transfer. Controversial but legal way to preserve family wealth.",
     difficulty: "hard"
+  },
+  {
+    levelNumber: 6,
+    question: "If inflation is 6% and your portfolio return is 8%, what is your approximate real return before tax?",
+    options: ["2%", "6%", "8%", "14%"],
+    correctAnswer: 0,
+    explanation: "Real return is roughly nominal return minus inflation for small values. Here it is about 2%.",
+    difficulty: "hard"
+  },
+  {
+    levelNumber: 6,
+    question: "Why can sequence-of-returns risk hurt retirees even when long-term average returns look good?",
+    options: ["Because inflation disappears", "Early negative returns combined with withdrawals can permanently reduce portfolio longevity", "Because bonds always fail", "Because dividends stop"],
+    correctAnswer: 1,
+    explanation: "Large losses early in retirement, while withdrawing, can damage the portfolio so much that later gains cannot fully recover it.",
+    difficulty: "hard"
+  },
+  {
+    levelNumber: 7,
+    question: "What is the main purpose of tax-loss harvesting in a taxable portfolio?",
+    options: ["Increase dividends", "Use realized losses to offset gains and potentially reduce taxes", "Avoid all taxes forever", "Convert stocks to bonds"],
+    correctAnswer: 1,
+    explanation: "Tax-loss harvesting realizes losses that can offset capital gains and sometimes a limited amount of ordinary income.",
+    difficulty: "hard"
+  },
+  {
+    levelNumber: 7,
+    question: "A bond has duration of 7. If yields rise by 1%, what is the approximate price impact?",
+    options: ["+7%", "-7%", "+1%", "No change"],
+    correctAnswer: 1,
+    explanation: "Duration estimates sensitivity: price change is approximately negative duration times yield change, so about -7%.",
+    difficulty: "hard"
+  },
+  {
+    levelNumber: 8,
+    question: "What does a low expense ratio primarily improve for long-term investors?",
+    options: ["Daily volatility", "Net compounded returns after fees", "Tax bracket", "FDIC insurance"],
+    correctAnswer: 1,
+    explanation: "Lower recurring costs leave more return invested each year, which compounds into a meaningful long-term difference.",
+    difficulty: "hard"
+  },
+  {
+    levelNumber: 8,
+    question: "Which metric best captures risk-adjusted return among similar portfolios?",
+    options: ["Sharpe ratio", "Dividend yield", "Price-to-book", "Coupon rate"],
+    correctAnswer: 0,
+    explanation: "Sharpe ratio compares excess return to volatility, helping evaluate return per unit of risk.",
+    difficulty: "hard"
+  },
+  {
+    levelNumber: 9,
+    question: "In options, what does implied volatility most directly represent?",
+    options: ["Past realized volatility", "Market expectation of future volatility embedded in option prices", "Interest rate risk", "Dividend payout"],
+    correctAnswer: 1,
+    explanation: "Implied volatility is derived from option prices and reflects the market's expected future price movement magnitude.",
+    difficulty: "hard"
+  },
+  {
+    levelNumber: 9,
+    question: "Why is concentration risk dangerous even in a high-conviction portfolio?",
+    options: ["Because diversification guarantees profits", "A single adverse event can severely damage total wealth", "Because ETFs are illegal", "Because cash has no risk"],
+    correctAnswer: 1,
+    explanation: "Concentration can amplify upside and downside. One major negative event can materially impair portfolio value.",
+    difficulty: "hard"
+  },
+  {
+    levelNumber: 10,
+    question: "What is the primary downside of high leverage in investing?",
+    options: ["Lower transaction speed", "Amplified losses that can trigger liquidation", "Guaranteed lower returns", "Fewer tax forms"],
+    correctAnswer: 1,
+    explanation: "Leverage magnifies gains and losses. Large adverse moves can lead to margin calls and forced selling.",
+    difficulty: "hard"
+  },
+  {
+    levelNumber: 10,
+    question: "What does correlation close to 1 between two assets imply?",
+    options: ["They move mostly together", "They always move opposite", "They are risk-free", "They have equal returns"],
+    correctAnswer: 0,
+    explanation: "Correlation near 1 means assets tend to move in the same direction, reducing diversification benefit between them.",
+    difficulty: "hard"
   }
 ];
 

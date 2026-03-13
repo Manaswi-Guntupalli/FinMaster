@@ -1,29 +1,29 @@
-// Quiz Rush Game Logic
 const API_URL = `${window.location.origin}/api`;
 let authToken = localStorage.getItem('finmaster_token');
 let isGuest = false;
 let socket = null;
 
-// Game State
 let gameState = {
-    mode: null, // 'single' or 'multiplayer'
+    mode: null,
     gameId: null,
     roomCode: null,
     isHost: false,
-    player1: { username: '', avatar: '', score: 0, correctAnswers: 0, totalAnswers: 0 },
-    player2: { username: '', avatar: '', score: 0, correctAnswers: 0, totalAnswers: 0 },
+    isBotMatch: false,
+    botProfile: null,
+    player1: { username: '', avatar: '', score: 0, correctAnswers: 0, totalAnswers: 0, averageTime: 0 },
+    player2: { username: '', avatar: '', score: 0, correctAnswers: 0, totalAnswers: 0, averageTime: 0 },
     questions: [],
     currentQuestionIndex: 0,
     timeLeft: 30,
     timerInterval: null,
     lives: 3,
     comboCount: 0,
-    powerupsUsed: { time: false, fifty: false, skip: false },
+    powerupsUsed: { time: false, fifty: true, skip: false },
     isAnswering: false,
-    questionStartTime: null
+    questionStartTime: null,
+    lastBotStatus: ''
 };
 
-// Initialize
 document.addEventListener('DOMContentLoaded', () => {
     checkAuth();
     setupEventListeners();
@@ -32,23 +32,19 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function checkAuth() {
-    // Check if guest session exists
     const guestName = sessionStorage.getItem('guestName');
     const gameId = sessionStorage.getItem('gameId');
     const roomCode = sessionStorage.getItem('roomCode');
-    
+
     if (guestName && gameId && roomCode) {
-        // Guest mode - joining from QR code
         isGuest = true;
         gameState.mode = 'multiplayer';
         gameState.isHost = false;
         gameState.gameId = gameId;
         gameState.roomCode = roomCode;
         gameState.player2.username = guestName;
-        
-        // Show waiting screen for guest
+
         setTimeout(() => {
-            showScreen('mode-selection');
             const modeScreen = document.getElementById('mode-selection');
             modeScreen.innerHTML = `
                 <div style="text-align: center; padding: 40px;">
@@ -59,11 +55,9 @@ function checkAuth() {
                 </div>
             `;
         }, 500);
-        
         return;
     }
-    
-    // Regular user - must be logged in
+
     if (!authToken) {
         window.location.href = '/index.html';
     }
@@ -71,17 +65,15 @@ function checkAuth() {
 
 async function loadUserProfile() {
     if (isGuest) {
-        // Guest user - use session data
         gameState.player2.username = sessionStorage.getItem('guestName');
         return;
     }
-    
+
     try {
         const response = await fetch(`${API_URL}/user/profile`, {
-            headers: { 'Authorization': `Bearer ${authToken}` }
+            headers: { Authorization: `Bearer ${authToken}` }
         });
         const userData = await response.json();
-        
         gameState.player1.username = userData.username;
         gameState.player1.avatar = userData.profilePicture || '';
     } catch (error) {
@@ -91,67 +83,43 @@ async function loadUserProfile() {
 
 function connectSocket() {
     socket = io(window.location.origin);
-    
+
     socket.on('connect', () => {
-        console.log('Connected to Socket.IO');
-        
-        // If guest, auto-join the room when socket connects
         if (isGuest && gameState.roomCode) {
-            console.log('Guest auto-joining room:', gameState.roomCode);
-            socket.emit('join-room', { 
-                roomCode: gameState.roomCode, 
-                userId: sessionStorage.getItem('guestName') 
+            socket.emit('join-room', {
+                roomCode: gameState.roomCode,
+                userId: sessionStorage.getItem('guestName')
             });
         }
     });
-    
+
     socket.on('player-joined', (data) => {
         if (gameState.mode === 'multiplayer' && gameState.isHost) {
-            gameState.player2 = data.player2;
+            gameState.player2 = {
+                ...gameState.player2,
+                ...data.player2,
+                score: 0,
+                correctAnswers: 0,
+                totalAnswers: 0,
+                averageTime: 0
+            };
             updateWaitingRoom();
-            
+
             if (data.status === 'ready') {
                 showToast('Player 2 joined! Starting game...', 'success');
-                setTimeout(() => startMultiplayerGame(), 2000);
+                setTimeout(() => startMultiplayerGame(), 1800);
             }
         }
     });
-    
+
     socket.on('start-game', async () => {
-        console.log('Received start-game event. isHost:', gameState.isHost, 'isGuest:', isGuest);
-        
         if (!gameState.isHost) {
-            // Guest player - fetch questions from server
             try {
-                console.log('Guest player fetching questions for gameId:', gameState.gameId);
                 const response = await fetch(`${API_URL}/quizrush/start-game/${gameState.gameId}`, {
                     method: 'POST'
                 });
-                
                 const data = await response.json();
-                console.log('Guest received questions:', data.questions.length);
-                gameState.questions = data.questions;
-                
-                // Set player data from server response
-                if (data.player1) {
-                    gameState.player1 = {
-                        username: data.player1.username,
-                        avatar: data.player1.avatar,
-                        score: 0,
-                        correctAnswers: 0,
-                        totalAnswers: 0
-                    };
-                }
-                if (data.player2) {
-                    gameState.player2 = {
-                        username: data.player2.username,
-                        avatar: data.player2.avatar,
-                        score: 0,
-                        correctAnswers: 0,
-                        totalAnswers: 0
-                    };
-                }
-                
+                hydrateGameFromPayload(data, false);
                 showScreen('game-screen');
                 initializeGame();
                 loadQuestion();
@@ -161,52 +129,58 @@ function connectSocket() {
             }
         }
     });
-    
+
     socket.on('opponent-answered', (data) => {
+        if (gameState.mode !== 'multiplayer') {
+            return;
+        }
+
         if (data.playerNum === 1) {
             gameState.player1.score = data.score;
+            if (data.isCorrect) {
+                gameState.player1.correctAnswers += 1;
+            }
+            gameState.player1.totalAnswers += 1;
         } else {
             gameState.player2.score = data.score;
+            if (data.isCorrect) {
+                gameState.player2.correctAnswers += 1;
+            }
+            gameState.player2.totalAnswers += 1;
         }
+
         updateScoreDisplay();
-        
         if (data.isCorrect) {
-            showToast(`Opponent answered correctly! +${data.pointsEarned}pts`, 'success');
+            showToast('Opponent answered correctly!', 'success');
         }
     });
-    
-    socket.on('player-eliminated', (data) => {
-        // Opponent lost all lives - you win!
-        showToast('🎉 Opponent eliminated! You win!', 'success');
-        setTimeout(() => endGame(), 2000);
+
+    socket.on('player-eliminated', () => {
+        showToast('Opponent eliminated! You win!', 'success');
+        setTimeout(() => endGame(), 1600);
     });
-    
+
     socket.on('show-results', (results) => {
         showResults(results);
     });
 }
 
 function setupEventListeners() {
-    // Mode selection
     document.getElementById('single-player-btn').addEventListener('click', startSinglePlayer);
     document.getElementById('multiplayer-btn').addEventListener('click', createMultiplayerRoom);
     document.getElementById('show-leaderboard').addEventListener('click', showLeaderboard);
-    
-    // Waiting room
+
     document.getElementById('back-from-waiting').addEventListener('click', () => showScreen('mode-selection'));
     document.getElementById('copy-room-link').addEventListener('click', copyRoomLink);
-    
-    // Game
-    document.querySelectorAll('.option-btn').forEach(btn => {
-        btn.addEventListener('click', () => selectAnswer(parseInt(btn.dataset.index)));
+
+    document.querySelectorAll('.option-btn').forEach(button => {
+        button.addEventListener('click', () => selectAnswer(parseInt(button.dataset.index, 10)));
     });
-    
-    // Power-ups
+
     document.getElementById('powerup-time')?.addEventListener('click', () => usePowerup('time'));
     document.getElementById('powerup-fifty')?.addEventListener('click', () => usePowerup('fifty'));
     document.getElementById('powerup-skip')?.addEventListener('click', () => usePowerup('skip'));
-    
-    // Results
+
     document.getElementById('play-again-btn').addEventListener('click', () => {
         resetGame();
         showScreen('mode-selection');
@@ -215,96 +189,136 @@ function setupEventListeners() {
     document.getElementById('back-home-result').addEventListener('click', () => {
         window.location.href = '/index.html';
     });
-    
-    // Share
+
     document.getElementById('share-twitter').addEventListener('click', shareOnTwitter);
     document.getElementById('share-whatsapp').addEventListener('click', shareOnWhatsApp);
     document.getElementById('share-copy').addEventListener('click', copyResults);
-    
-    // Leaderboard
+
     document.getElementById('close-leaderboard').addEventListener('click', hideLeaderboard);
     document.getElementById('close-leaderboard-btn').addEventListener('click', hideLeaderboard);
-    
-    // Back to home
+
     document.getElementById('back-to-home').addEventListener('click', () => {
         window.location.href = '/index.html';
     });
 }
 
 function showScreen(screenId) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
     document.getElementById(screenId).classList.add('active');
 }
 
-// Single Player Mode
+function hydrateGameFromPayload(data, isBotMatch) {
+    gameState.isBotMatch = isBotMatch;
+    gameState.questions = data.questions || [];
+    gameState.botProfile = data.botProfile || null;
+
+    if (data.gameId) {
+        gameState.gameId = data.gameId;
+    }
+    if (data.roomCode) {
+        gameState.roomCode = data.roomCode;
+    }
+    if (data.player1) {
+        gameState.player1 = {
+            username: data.player1.username,
+            avatar: data.player1.avatar,
+            score: 0,
+            correctAnswers: 0,
+            totalAnswers: 0,
+            averageTime: data.player1.averageTime || 0
+        };
+    }
+    if (data.player2) {
+        gameState.player2 = {
+            username: data.player2.username,
+            avatar: data.player2.avatar,
+            score: 0,
+            correctAnswers: 0,
+            totalAnswers: 0,
+            averageTime: data.player2.averageTime || 0
+        };
+        updateOpponentStatus(data.player2.statusMessage || (isBotMatch ? 'Adaptive AI is calibrating...' : 'Ready'));
+    }
+}
+
 async function startSinglePlayer() {
     gameState.mode = 'single';
-    gameState.player2.username = 'Computer AI';
-    gameState.player2.avatar = '';
-    
+    gameState.isHost = false;
+    gameState.isBotMatch = true;
     document.getElementById('powerups-container').style.display = 'flex';
-    
-    // Load questions
+    document.getElementById('powerup-fifty').disabled = true;
+
     try {
-        const response = await fetch(`${API_URL}/game/questions?level=1&limit=10`, {
-            headers: { 'Authorization': `Bearer ${authToken}` }
+        const response = await fetch(`${API_URL}/quizrush/start-ai-match`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ botMode: 'adaptive' })
         });
-        const questions = await response.json();
-        gameState.questions = questions;
-        
+
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.message || 'Failed to start AI match');
+        }
+
+        hydrateGameFromPayload(data, true);
+        showToast('Adaptive AI duel ready. It will match your pace.', 'success');
         showScreen('game-screen');
         initializeGame();
         loadQuestion();
     } catch (error) {
-        console.error('Error loading questions:', error);
-        showToast('Failed to load questions', 'error');
+        console.error('Error starting AI match:', error);
+        showToast(error.message || 'Failed to start AI match', 'error');
     }
 }
 
-// Multiplayer Mode
 async function createMultiplayerRoom() {
     gameState.mode = 'multiplayer';
     gameState.isHost = true;
-    
+    gameState.isBotMatch = false;
+
     try {
         const response = await fetch(`${API_URL}/quizrush/create-room`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${authToken}`,
+                Authorization: `Bearer ${authToken}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({ gameMode: 'quiz-rush' })
         });
-        
         const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.message || 'Failed to create room');
+        }
+
         gameState.roomCode = data.roomCode;
         gameState.gameId = data.gameId;
-        
-        // Display QR code and room info
+
         document.getElementById('qr-code-img').src = data.qrCode;
         document.getElementById('room-code-display').textContent = data.roomCode;
         document.getElementById('p1-name-waiting').textContent = gameState.player1.username;
-        
+
         if (gameState.player1.avatar) {
             document.getElementById('p1-avatar-waiting').src = gameState.player1.avatar;
             document.getElementById('p1-avatar-waiting').style.display = 'block';
         }
-        
-        // Join socket room
+
         socket.emit('join-room', { roomCode: data.roomCode, userId: gameState.player1.username });
-        
         showScreen('waiting-room');
     } catch (error) {
         console.error('Error creating room:', error);
-        showToast('Failed to create room', 'error');
+        showToast(error.message || 'Failed to create room', 'error');
     }
 }
 
 function updateWaitingRoom() {
-    const p2Slot = document.getElementById('p2-slot-waiting');
-    p2Slot.classList.remove('empty');
-    p2Slot.classList.add('filled');
-    p2Slot.innerHTML = `
+    const slot = document.getElementById('p2-slot-waiting');
+    slot.classList.remove('empty');
+    slot.classList.add('filled');
+    slot.innerHTML = `
         <img class="player-avatar" src="${gameState.player2.avatar || ''}" alt="" style="${gameState.player2.avatar ? '' : 'display: none'}">
         <div class="player-name">${gameState.player2.username}</div>
         <div class="status-badge ready">Ready</div>
@@ -313,57 +327,27 @@ function updateWaitingRoom() {
 
 async function startMultiplayerGame() {
     try {
-        console.log('Starting multiplayer game...', gameState.gameId);
-        
         const response = await fetch(`${API_URL}/quizrush/start-game/${gameState.gameId}`, {
             method: 'POST',
-            headers: { 
-                'Authorization': `Bearer ${authToken}`,
+            headers: {
+                Authorization: `Bearer ${authToken}`,
                 'Content-Type': 'application/json'
             }
         });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
         const data = await response.json();
-        console.log('Received questions:', data.questions);
-        
-        if (!data.questions || data.questions.length === 0) {
-            throw new Error('No questions received from server');
+
+        if (!response.ok) {
+            throw new Error(data.message || 'Failed to start multiplayer game');
         }
-        
-        gameState.questions = data.questions;
-        
-        // Set player data from server
-        if (data.player1) {
-            gameState.player1 = {
-                username: data.player1.username,
-                avatar: data.player1.avatar,
-                score: 0,
-                correctAnswers: 0,
-                totalAnswers: 0
-            };
-        }
-        if (data.player2) {
-            gameState.player2 = {
-                username: data.player2.username,
-                avatar: data.player2.avatar,
-                score: 0,
-                correctAnswers: 0,
-                totalAnswers: 0
-            };
-        }
-        
+
+        hydrateGameFromPayload(data, false);
         socket.emit('game-started', { roomCode: gameState.roomCode });
-        
         showScreen('game-screen');
         initializeGame();
         loadQuestion();
     } catch (error) {
         console.error('Error starting game:', error);
-        showToast('Failed to start game: ' + error.message, 'error');
+        showToast(error.message || 'Failed to start game', 'error');
     }
 }
 
@@ -373,82 +357,83 @@ function copyRoomLink() {
     showToast('Room link copied!', 'success');
 }
 
-// Game Logic
 function initializeGame() {
     gameState.currentQuestionIndex = 0;
     gameState.player1.score = 0;
     gameState.player1.correctAnswers = 0;
     gameState.player1.totalAnswers = 0;
+    gameState.player1.averageTime = 0;
     gameState.player2.score = 0;
     gameState.player2.correctAnswers = 0;
     gameState.player2.totalAnswers = 0;
+    gameState.player2.averageTime = 0;
     gameState.lives = 3;
     gameState.comboCount = 0;
-    
+    gameState.powerupsUsed = { time: false, fifty: true, skip: false };
+    gameState.lastBotStatus = gameState.isBotMatch ? 'Adaptive AI is calibrating...' : '';
     updateUI();
 }
 
 function updateUI() {
-    // Update player names and avatars
     document.getElementById('p1-name').textContent = gameState.player1.username;
     document.getElementById('p2-name').textContent = gameState.player2.username;
-    
-    if (gameState.player1.avatar) {
-        document.getElementById('p1-avatar').src = gameState.player1.avatar;
-    }
-    if (gameState.player2.avatar) {
-        document.getElementById('p2-avatar').src = gameState.player2.avatar;
-    }
-    
+
+    setAvatar('p1-avatar', gameState.player1.avatar);
+    setAvatar('p2-avatar', gameState.player2.avatar);
+    updateOpponentStatus(gameState.lastBotStatus || (gameState.isBotMatch ? 'Adaptive AI active' : 'Ready'));
     updateScoreDisplay();
+}
+
+function setAvatar(elementId, avatar) {
+    const element = document.getElementById(elementId);
+    if (!avatar) {
+        element.style.display = 'none';
+        return;
+    }
+
+    element.src = avatar;
+    element.style.display = 'block';
+}
+
+function updateOpponentStatus(message) {
+    const status = document.getElementById('p2-status');
+    if (!status) {
+        return;
+    }
+
+    status.textContent = message || (gameState.isBotMatch ? 'Adaptive AI active' : 'Ready');
 }
 
 function updateScoreDisplay() {
     document.getElementById('p1-score').textContent = gameState.player1.score;
     document.getElementById('p2-score').textContent = gameState.player2.score;
     document.getElementById('p1-combo').textContent = `×${Math.floor(gameState.comboCount) + 1}`;
+    document.getElementById('p2-combo').textContent = `×${Math.max(1, gameState.player2.correctAnswers)}`;
 }
 
 function loadQuestion() {
-    console.log('Loading question:', gameState.currentQuestionIndex, 'Total questions:', gameState.questions?.length);
-    
-    if (!gameState.questions || gameState.questions.length === 0) {
-        console.error('No questions available!');
-        showToast('Error: No questions loaded', 'error');
-        return;
-    }
-    
     if (gameState.currentQuestionIndex >= gameState.questions.length) {
-        console.log('All questions completed, ending game');
         endGame();
         return;
     }
-    
+
     const question = gameState.questions[gameState.currentQuestionIndex];
-    console.log('Current question:', question);
-    
     if (!question) {
-        console.error('Question is undefined at index:', gameState.currentQuestionIndex);
         showToast('Error loading question', 'error');
         return;
     }
-    
-    // Update UI
-    document.getElementById('question-counter').textContent = 
-        `Question ${gameState.currentQuestionIndex + 1}/${gameState.questions.length}`;
-    document.getElementById('category-badge').textContent = question.category || 'Finance';
+
+    document.getElementById('question-counter').textContent = `Question ${gameState.currentQuestionIndex + 1}/${gameState.questions.length}`;
+    document.getElementById('category-badge').textContent = `${question.category || 'Finance'} • ${question.difficulty || 'medium'}`;
     document.getElementById('question-text').textContent = question.question;
-    
-    // Load options
-    const optionBtns = document.querySelectorAll('.option-btn');
-    optionBtns.forEach((btn, index) => {
-        btn.textContent = question.options[index];
-        btn.disabled = false;
-        btn.className = 'option-btn';
-        btn.blur(); // Remove focus state
+
+    document.querySelectorAll('.option-btn').forEach((button, index) => {
+        button.textContent = question.options[index];
+        button.disabled = false;
+        button.className = 'option-btn';
+        button.blur();
     });
-    
-    // Start timer
+
     gameState.timeLeft = 30;
     gameState.questionStartTime = Date.now();
     gameState.isAnswering = false;
@@ -458,11 +443,11 @@ function loadQuestion() {
 function startTimer() {
     clearInterval(gameState.timerInterval);
     updateTimerDisplay();
-    
+
     gameState.timerInterval = setInterval(() => {
-        gameState.timeLeft--;
+        gameState.timeLeft -= 1;
         updateTimerDisplay();
-        
+
         if (gameState.timeLeft <= 0) {
             clearInterval(gameState.timerInterval);
             if (!gameState.isAnswering) {
@@ -477,8 +462,7 @@ function updateTimerDisplay() {
     const circle = document.getElementById('timer-circle');
     const offset = 283 - (283 * gameState.timeLeft / 30);
     circle.style.strokeDashoffset = offset;
-    
-    // Change color when time is running out
+
     if (gameState.timeLeft <= 5) {
         circle.style.stroke = '#ff6350';
     } else if (gameState.timeLeft <= 10) {
@@ -489,140 +473,162 @@ function updateTimerDisplay() {
 }
 
 async function selectAnswer(selectedIndex) {
-    if (gameState.isAnswering) return;
-    
+    if (gameState.isAnswering) {
+        return;
+    }
+
     gameState.isAnswering = true;
     clearInterval(gameState.timerInterval);
-    
     const timeTaken = Math.floor((Date.now() - gameState.questionStartTime) / 1000);
-    
-    // Disable all options
-    document.querySelectorAll('.option-btn').forEach(btn => btn.disabled = true);
-    
+    document.querySelectorAll('.option-btn').forEach(button => {
+        button.disabled = true;
+    });
+
     if (gameState.mode === 'single') {
-        await handleSinglePlayerAnswer(selectedIndex, timeTaken);
+        await submitSinglePlayerAnswer(selectedIndex, timeTaken);
     } else {
-        await handleMultiplayerAnswer(selectedIndex, timeTaken);
+        await submitMultiplayerAnswer(selectedIndex, timeTaken);
     }
 }
 
-async function handleSinglePlayerAnswer(selectedIndex, timeTaken) {
+async function submitSinglePlayerAnswer(selectedIndex, timeTaken) {
     const question = gameState.questions[gameState.currentQuestionIndex];
-    const isCorrect = question.correctAnswer === selectedIndex;
-    
-    // Show correct/wrong
-    const optionBtns = document.querySelectorAll('.option-btn');
-    optionBtns[question.correctAnswer].classList.add('correct');
-    if (!isCorrect) {
-        optionBtns[selectedIndex].classList.add('wrong');
-    }
-    
-    // Calculate points
-    let pointsEarned = 0;
-    if (isCorrect) {
-        const timeBonus = timeTaken < 10 ? 50 : 0;
-        const comboMultiplier = 1 + (gameState.comboCount * 0.1);
-        pointsEarned = Math.floor((100 * comboMultiplier) + timeBonus);
-        
-        gameState.player1.score += pointsEarned;
-        gameState.player1.correctAnswers++;
-        gameState.comboCount++;
-        
-        showToast(`Correct! +${pointsEarned} points`, 'success');
-    } else {
-        gameState.lives--;
-        gameState.comboCount = 0;
-        updateLivesDisplay();
-        
-        showToast('Wrong answer! -1 life', 'error');
-        
-        if (gameState.lives <= 0) {
-            setTimeout(() => endGame(), 2000);
-            return;
+
+    try {
+        const response = await fetch(`${API_URL}/quizrush/submit-answer`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                gameId: gameState.gameId,
+                questionId: question.questionId,
+                selectedAnswer: selectedIndex,
+                timeTaken,
+                isGuest: false
+            })
+        });
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.message || 'Failed to submit answer');
         }
-    }
-    
-    gameState.player1.totalAnswers++;
-    updateScoreDisplay();
-    
-    // Computer's turn (70% accuracy)
-    setTimeout(() => {
-        const computerCorrect = Math.random() < 0.7;
-        if (computerCorrect) {
-            const compPoints = Math.floor(100 * (1 + Math.random() * 0.5));
-            gameState.player2.score += compPoints;
-            gameState.player2.correctAnswers++;
+
+        showAnswerFeedback(selectedIndex, result.correctAnswer, result.correct);
+        gameState.player1.totalAnswers += 1;
+        gameState.player1.averageTime = result.averageTime || gameState.player1.averageTime;
+
+        if (result.correct) {
+            gameState.comboCount = result.comboCount;
+            gameState.player1.correctAnswers += 1;
+            gameState.player1.score = result.newScore;
+            showToast(`Correct! +${result.pointsEarned} points`, 'success');
+        } else {
+            gameState.lives -= 1;
+            gameState.comboCount = 0;
+            updateLivesDisplay();
+            showToast('Wrong answer! -1 life', 'error');
+            if (gameState.lives <= 0) {
+                setTimeout(() => endGame(), 1400);
+                return;
+            }
         }
-        gameState.player2.totalAnswers++;
+
         updateScoreDisplay();
-        
-        setTimeout(() => nextQuestion(), 1000);
-    }, 1500);
+
+        if (result.botTurn) {
+            updateOpponentStatus(`AI thinking... ${Math.round(result.botTurn.delayMs / 1000)}s`);
+            const animationDelay = Math.min(result.botTurn.delayMs, 5000);
+            setTimeout(() => {
+                applyBotTurn(result.botTurn);
+                setTimeout(() => nextQuestion(), 1200);
+            }, animationDelay);
+        } else {
+            setTimeout(() => nextQuestion(), 1200);
+        }
+    } catch (error) {
+        console.error('Error submitting single-player answer:', error);
+        gameState.isAnswering = false;
+        document.querySelectorAll('.option-btn').forEach(button => {
+            button.disabled = false;
+            button.className = 'option-btn';
+        });
+        startTimer();
+        showToast(error.message || 'Failed to submit answer', 'error');
+    }
 }
 
-async function handleMultiplayerAnswer(selectedIndex, timeTaken) {
+function applyBotTurn(botTurn) {
+    gameState.player2.totalAnswers += 1;
+    gameState.player2.averageTime = botTurn.averageTime || gameState.player2.averageTime;
+    if (botTurn.isCorrect) {
+        gameState.player2.correctAnswers += 1;
+        gameState.player2.score += botTurn.pointsEarned;
+        showToast(`${gameState.player2.username}: ${botTurn.reaction} +${botTurn.pointsEarned} points`, 'success');
+    } else {
+        showToast(`${gameState.player2.username}: ${botTurn.reaction}`, 'info');
+    }
+    gameState.lastBotStatus = botTurn.statusMessage;
+    updateOpponentStatus(botTurn.statusMessage);
+    updateScoreDisplay();
+}
+
+async function submitMultiplayerAnswer(selectedIndex, timeTaken) {
     try {
         const headers = { 'Content-Type': 'application/json' };
         if (authToken && !isGuest) {
-            headers['Authorization'] = `Bearer ${authToken}`;
+            headers.Authorization = `Bearer ${authToken}`;
         }
-        
+
         const response = await fetch(`${API_URL}/quizrush/submit-answer`, {
             method: 'POST',
-            headers: headers,
+            headers,
             body: JSON.stringify({
                 gameId: gameState.gameId,
                 questionId: gameState.questions[gameState.currentQuestionIndex].questionId,
                 selectedAnswer: selectedIndex,
                 timeTaken,
-                isGuest: isGuest,
+                isGuest,
                 playerName: isGuest ? sessionStorage.getItem('guestName') : null
             })
         });
-        
         const result = await response.json();
-        
-        // Show correct/wrong
-        const optionBtns = document.querySelectorAll('.option-btn');
-        optionBtns[result.correctAnswer].classList.add('correct');
-        if (!result.correct) {
-            optionBtns[selectedIndex].classList.add('wrong');
+
+        if (!response.ok) {
+            throw new Error(result.message || 'Failed to submit answer');
         }
-        
-        // Determine which player this is (guest is player2, host is player1)
+
+        showAnswerFeedback(selectedIndex, result.correctAnswer, result.correct);
+
         const currentPlayer = isGuest ? gameState.player2 : gameState.player1;
-        
+        currentPlayer.totalAnswers += 1;
+        currentPlayer.averageTime = result.averageTime || currentPlayer.averageTime;
+
         if (result.correct) {
             gameState.comboCount = result.comboCount;
             currentPlayer.score = result.newScore;
-            currentPlayer.correctAnswers++;
+            currentPlayer.correctAnswers += 1;
             showToast(`Correct! +${result.pointsEarned} points`, 'success');
         } else {
-            gameState.lives--;
+            gameState.lives -= 1;
             gameState.comboCount = 0;
             updateLivesDisplay();
             showToast('Wrong answer! -1 life', 'error');
-            
-            // Check if player lost all lives
+
             if (gameState.lives <= 0) {
-                showToast('💔 All lives lost! Game Over!', 'error');
-                
-                // Notify opponent that game ended due to lives lost
                 socket.emit('player-eliminated', {
                     roomCode: gameState.roomCode,
                     playerNum: isGuest ? 2 : 1,
                     reason: 'lives-lost'
                 });
-                
-                setTimeout(() => endGame(), 2000);
+                setTimeout(() => endGame(), 1400);
                 return;
             }
         }
-        
-        currentPlayer.totalAnswers++;
+
         updateScoreDisplay();
-        
-        // Notify opponent (send correct player number)
+
         socket.emit('answer-submitted', {
             roomCode: gameState.roomCode,
             playerNum: isGuest ? 2 : 1,
@@ -632,37 +638,46 @@ async function handleMultiplayerAnswer(selectedIndex, timeTaken) {
             timeTaken,
             pointsEarned: result.pointsEarned
         });
-        
-        setTimeout(() => nextQuestion(), 2000);
+
+        setTimeout(() => nextQuestion(), 1500);
     } catch (error) {
-        console.error('Error submitting answer:', error);
-        showToast('Failed to submit answer', 'error');
+        console.error('Error submitting multiplayer answer:', error);
+        gameState.isAnswering = false;
+        document.querySelectorAll('.option-btn').forEach(button => {
+            button.disabled = false;
+            button.className = 'option-btn';
+        });
+        startTimer();
+        showToast(error.message || 'Failed to submit answer', 'error');
     }
 }
 
-function handleTimeout() {
-    showToast('Time\'s up!', 'error');
-    gameState.lives--;
-    gameState.comboCount = 0;
-    gameState.player1.totalAnswers++;
-    updateLivesDisplay();
-    
-    if (gameState.lives <= 0) {
-        setTimeout(() => endGame(), 2000);
-        return;
+function showAnswerFeedback(selectedIndex, correctAnswer, isCorrect) {
+    const buttons = document.querySelectorAll('.option-btn');
+    if (buttons[correctAnswer]) {
+        buttons[correctAnswer].classList.add('correct');
     }
-    
-    setTimeout(() => nextQuestion(), 2000);
+    if (!isCorrect && selectedIndex >= 0 && buttons[selectedIndex]) {
+        buttons[selectedIndex].classList.add('wrong');
+    }
+}
+
+async function handleTimeout() {
+    showToast('Time is up!', 'error');
+    if (gameState.mode === 'single') {
+        await submitSinglePlayerAnswer(-1, 30);
+    } else {
+        await submitMultiplayerAnswer(-1, 30);
+    }
 }
 
 function nextQuestion() {
-    gameState.currentQuestionIndex++;
+    gameState.currentQuestionIndex += 1;
     loadQuestion();
 }
 
 function updateLivesDisplay() {
-    const hearts = document.querySelectorAll('.heart');
-    hearts.forEach((heart, index) => {
+    document.querySelectorAll('.heart').forEach((heart, index) => {
         if (index >= gameState.lives) {
             heart.classList.add('lost');
         } else {
@@ -671,184 +686,150 @@ function updateLivesDisplay() {
     });
 }
 
-// Power-ups (Single Player Only)
 function usePowerup(type) {
-    if (gameState.powerupsUsed[type]) return;
-    
+    if (gameState.powerupsUsed[type]) {
+        return;
+    }
+
     gameState.powerupsUsed[type] = true;
     document.getElementById(`powerup-${type}`).disabled = true;
-    
+
     if (type === 'time') {
         gameState.timeLeft = Math.min(gameState.timeLeft + 15, 30);
+        updateTimerDisplay();
         showToast('+15 seconds!', 'success');
-    } else if (type === 'fifty') {
-        const question = gameState.questions[gameState.currentQuestionIndex];
-        const optionBtns = document.querySelectorAll('.option-btn');
-        let removed = 0;
-        
-        optionBtns.forEach((btn, index) => {
-            if (index !== question.correctAnswer && removed < 2) {
-                btn.disabled = true;
-                btn.style.opacity = '0.3';
-                removed++;
-            }
-        });
-        
-        showToast('50/50 used!', 'success');
-    } else if (type === 'skip') {
+        return;
+    }
+
+    if (type === 'skip') {
         clearInterval(gameState.timerInterval);
         showToast('Question skipped!', 'success');
-        setTimeout(() => nextQuestion(), 1000);
+        setTimeout(() => nextQuestion(), 700);
+        return;
     }
+
+    showToast('50/50 is disabled in adaptive AI mode to preserve the challenge.', 'info');
 }
 
-// End Game
 async function endGame() {
     clearInterval(gameState.timerInterval);
-    
-    if (gameState.mode === 'multiplayer') {
-        try {
-            const headers = { 'Content-Type': 'application/json' };
-            if (authToken && !isGuest) {
-                headers['Authorization'] = `Bearer ${authToken}`;
-            }
-            
-            const response = await fetch(`${API_URL}/quizrush/end-game/${gameState.gameId}`, {
-                method: 'POST',
-                headers: headers,
-                body: JSON.stringify({
-                    isGuest: isGuest,
-                    playerName: isGuest ? sessionStorage.getItem('guestName') : null
-                })
-            });
-            
-            const results = await response.json();
-            
-            socket.emit('game-ended', { roomCode: gameState.roomCode, results });
-            showResults(results);
-        } catch (error) {
-            console.error('Error ending game:', error);
+
+    try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (authToken && !isGuest) {
+            headers.Authorization = `Bearer ${authToken}`;
         }
-    } else {
-        // Calculate single player results
-        const results = {
-            winner: gameState.player1.score > gameState.player2.score ? 'player1' : 'player2',
-            player1Score: gameState.player1.score,
-            player2Score: gameState.player2.score,
-            player1Stats: {
-                correct: gameState.player1.correctAnswers,
-                total: gameState.player1.totalAnswers,
-                accuracy: Math.round((gameState.player1.correctAnswers / gameState.player1.totalAnswers) * 100)
-            },
-            player2Stats: {
-                correct: gameState.player2.correctAnswers,
-                total: gameState.player2.totalAnswers,
-                accuracy: Math.round((gameState.player2.correctAnswers / gameState.player2.totalAnswers) * 100)
-            }
-        };
-        
+
+        const response = await fetch(`${API_URL}/quizrush/end-game/${gameState.gameId}`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                isGuest,
+                playerName: isGuest ? sessionStorage.getItem('guestName') : null
+            })
+        });
+        const results = await response.json();
+
+        if (!response.ok) {
+            throw new Error(results.message || 'Failed to end game');
+        }
+
+        if (gameState.mode === 'multiplayer') {
+            socket.emit('game-ended', { roomCode: gameState.roomCode, results });
+        }
         showResults(results);
+    } catch (error) {
+        console.error('Error ending game:', error);
+        showToast(error.message || 'Failed to finish the match', 'error');
     }
 }
 
 function showResults(results) {
-    // Update results screen
     const won = results.winner === 'player1';
-    
-    document.getElementById('result-title').textContent = won ? '🏆 Victory!' : results.winner === 'tie' ? '🤝 Tie Game!' : '😔 Defeat';
-    document.getElementById('result-subtitle').textContent = won ? 'You crushed it!' : results.winner === 'tie' ? 'Evenly matched!' : 'Better luck next time!';
-    
-    // Player 1
-    if (gameState.player1.avatar) {
-        document.getElementById('p1-result-avatar').src = gameState.player1.avatar;
-    }
+    document.getElementById('result-title').textContent = won ? 'Victory!' : results.winner === 'tie' ? 'Tie Game!' : 'Defeat';
+    document.getElementById('result-subtitle').textContent = won
+        ? 'You outplayed the challenge.'
+        : results.winner === 'tie'
+            ? 'That was incredibly close.'
+            : 'The AI edged this round.';
+
+    setAvatar('p1-result-avatar', gameState.player1.avatar);
+    setAvatar('p2-result-avatar', gameState.player2.avatar);
+
     document.getElementById('p1-result-name').textContent = gameState.player1.username;
     document.getElementById('p1-final-score').textContent = results.player1Score;
     document.getElementById('p1-correct').textContent = `${results.player1Stats.correct}/${results.player1Stats.total}`;
     document.getElementById('p1-accuracy').textContent = `${results.player1Stats.accuracy}%`;
-    
-    // Player 2
-    if (gameState.player2.avatar) {
-        document.getElementById('p2-result-avatar').src = gameState.player2.avatar;
-    }
+    document.getElementById('p1-avg-time').textContent = `${results.player1Stats.averageTime || 0}s`;
+
     document.getElementById('p2-result-name').textContent = gameState.player2.username;
     document.getElementById('p2-final-score').textContent = results.player2Score;
     document.getElementById('p2-correct').textContent = `${results.player2Stats.correct}/${results.player2Stats.total}`;
     document.getElementById('p2-accuracy').textContent = `${results.player2Stats.accuracy}%`;
-    
+    document.getElementById('p2-avg-time').textContent = `${results.player2Stats.averageTime || 0}s`;
+
     showScreen('results-screen');
 }
 
-// Social Sharing
 function shareOnTwitter() {
-    const won = gameState.player1.score > gameState.player2.score;
-    const text = `I just ${won ? 'won' : 'played'} Quiz Rush on FinMaster! 🎯\n\n` +
-                 `My Score: ${gameState.player1.score} points\n` +
-                 `Accuracy: ${Math.round((gameState.player1.correctAnswers / gameState.player1.totalAnswers) * 100)}%\n\n` +
-                 `Can you beat me? #FinMaster #FinancialLiteracy`;
-    
+    const accuracy = gameState.player1.totalAnswers
+        ? Math.round((gameState.player1.correctAnswers / gameState.player1.totalAnswers) * 100)
+        : 0;
+    const text = `I just played Quiz Rush on FinMaster. Score: ${gameState.player1.score} points. Accuracy: ${accuracy}%.`;
     window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank');
 }
 
 function shareOnWhatsApp() {
-    const won = gameState.player1.score > gameState.player2.score;
-    const text = `🎯 Quiz Rush - FinMaster\n\n` +
-                 `${won ? '🏆 I won!' : 'Game Complete!'}\n` +
-                 `Score: ${gameState.player1.score} points\n` +
-                 `Accuracy: ${Math.round((gameState.player1.correctAnswers / gameState.player1.totalAnswers) * 100)}%\n\n` +
-                 `Challenge me at FinMaster!`;
-    
+    const accuracy = gameState.player1.totalAnswers
+        ? Math.round((gameState.player1.correctAnswers / gameState.player1.totalAnswers) * 100)
+        : 0;
+    const text = `Quiz Rush on FinMaster. Score: ${gameState.player1.score}. Accuracy: ${accuracy}%. Can you beat me?`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
 }
 
 function copyResults() {
-    const text = `Quiz Rush Results\n\n` +
-                 `${gameState.player1.username}: ${gameState.player1.score} points\n` +
-                 `${gameState.player2.username}: ${gameState.player2.score} points\n\n` +
-                 `Play at FinMaster!`;
-    
+    const text = `${gameState.player1.username}: ${gameState.player1.score} points\n${gameState.player2.username}: ${gameState.player2.score} points`;
     navigator.clipboard.writeText(text);
     showToast('Results copied!', 'success');
 }
 
-// Leaderboard
 async function showLeaderboard() {
     try {
         const response = await fetch(`${API_URL}/quizrush/leaderboard`, {
-            headers: { 'Authorization': `Bearer ${authToken}` }
+            headers: { Authorization: `Bearer ${authToken}` }
         });
         const leaderboard = await response.json();
-        
-        const listContainer = document.getElementById('leaderboard-list');
-        listContainer.innerHTML = '';
-        
-        if (leaderboard.length === 0) {
-            listContainer.innerHTML = '<p style="text-align: center; padding: 40px; color: #666;">No games played yet!</p>';
+
+        if (!response.ok) {
+            throw new Error(leaderboard.message || 'Failed to load leaderboard');
+        }
+
+        const container = document.getElementById('leaderboard-list');
+        container.innerHTML = '';
+
+        if (!leaderboard.length) {
+            container.innerHTML = '<p style="text-align: center; padding: 40px; color: #666;">No games played yet.</p>';
         } else {
             leaderboard.forEach((entry, index) => {
-                const div = document.createElement('div');
-                div.className = 'leaderboard-entry';
-                
-                const rankClass = index < 3 ? `rank-${index + 1}` : '';
-                const rankDisplay = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : (index + 1);
-                
-                div.innerHTML = `
-                    <div class="rank ${rankClass}">${rankDisplay}</div>
+                const row = document.createElement('div');
+                row.className = 'leaderboard-entry';
+                const rankDisplay = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}`;
+                row.innerHTML = `
+                    <div class="rank">${rankDisplay}</div>
                     <div style="flex: 1;">
                         <h4 style="margin-bottom: 5px; color: #333;">${entry.username}</h4>
                         <p style="color: #666; font-size: 14px;">Accuracy: ${entry.accuracy}%</p>
                     </div>
                     <div class="score-display">${entry.score}</div>
                 `;
-                
-                listContainer.appendChild(div);
+                container.appendChild(row);
             });
         }
-        
+
         document.getElementById('leaderboard-modal').classList.add('active');
     } catch (error) {
         console.error('Error loading leaderboard:', error);
-        showToast('Failed to load leaderboard', 'error');
+        showToast(error.message || 'Failed to load leaderboard', 'error');
     }
 }
 
@@ -863,28 +844,33 @@ function resetGame() {
         gameId: null,
         roomCode: null,
         isHost: false,
-        player1: { username: gameState.player1.username, avatar: gameState.player1.avatar, score: 0, correctAnswers: 0, totalAnswers: 0 },
-        player2: { username: '', avatar: '', score: 0, correctAnswers: 0, totalAnswers: 0 },
+        isBotMatch: false,
+        botProfile: null,
+        player1: { username: gameState.player1.username, avatar: gameState.player1.avatar, score: 0, correctAnswers: 0, totalAnswers: 0, averageTime: 0 },
+        player2: { username: '', avatar: '', score: 0, correctAnswers: 0, totalAnswers: 0, averageTime: 0 },
         questions: [],
         currentQuestionIndex: 0,
         timeLeft: 30,
         timerInterval: null,
         lives: 3,
         comboCount: 0,
-        powerupsUsed: { time: false, fifty: false, skip: false },
+        powerupsUsed: { time: false, fifty: true, skip: false },
         isAnswering: false,
-        questionStartTime: null
+        questionStartTime: null,
+        lastBotStatus: ''
     };
-    
-    // Reset power-ups
-    document.querySelectorAll('.powerup-btn').forEach(btn => btn.disabled = false);
+
+    document.querySelectorAll('.powerup-btn').forEach(button => {
+        button.disabled = false;
+    });
+    document.getElementById('powerup-fifty').disabled = true;
+    updateLivesDisplay();
 }
 
 function showToast(message, type = 'info') {
     const toast = document.getElementById('toast');
     toast.textContent = message;
     toast.className = `toast show ${type}`;
-    
     setTimeout(() => {
         toast.classList.remove('show');
     }, 3000);

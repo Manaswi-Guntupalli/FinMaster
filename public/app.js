@@ -7,12 +7,16 @@ let authToken = null;
 let currentLevel = null;
 let currentQuestions = [];
 let currentQuestionIndex = 0;
+let totalQuestionsInLevel = 0;
+let answeredQuestionsCount = 0;
 let correctAnswersCount = 0;
 let totalPointsEarned = 0;
 let totalCoinsEarned = 0;
 let isAIChatOpen = false;
 let currentQuestionData = null;
 let selectedOptionIndex = null; // Track selected option
+let currentAdaptiveRecommendation = null;
+let lastAdaptiveInsightKey = null;
 
 // Audio Context for Sound Effects
 const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -403,8 +407,12 @@ async function openLevel(levelNumber) {
     currentQuestions = [];
     currentLevel = null;
     currentQuestionIndex = 0;
+    totalQuestionsInLevel = 0;
+    answeredQuestionsCount = 0;
     correctAnswersCount = 0;
     selectedOptionIndex = null;
+    currentAdaptiveRecommendation = null;
+    lastAdaptiveInsightKey = null;
     
     try {
         // Add timestamp to prevent any caching
@@ -418,31 +426,29 @@ async function openLevel(levelNumber) {
         });
         
         currentLevel = levelData.level;
-        currentQuestions = levelData.questions;
+        totalQuestionsInLevel = levelData.questions.length;
+        currentQuestions = levelData.questions.filter(question => !question.isAnswered);
+        currentAdaptiveRecommendation = levelData.adaptiveRecommendation || null;
         
         // Check if there's existing progress
         if (levelData.progress && levelData.progress.questionsAnswered > 0) {
-            // Resume from the last question
-            currentQuestionIndex = levelData.progress.questionsAnswered;
+            answeredQuestionsCount = levelData.progress.questionsAnswered;
+            currentQuestionIndex = answeredQuestionsCount;
             correctAnswersCount = levelData.progress.correctAnswers;
             totalPointsEarned = levelData.progress.pointsEarned;
             totalCoinsEarned = levelData.progress.coinsEarned;
             
             console.log('📊 Resuming Level Progress:', {
-                questionsAnswered: currentQuestionIndex,
-                totalQuestions: currentQuestions.length,
+                questionsAnswered: answeredQuestionsCount,
+                totalQuestions: totalQuestionsInLevel,
+                remainingQuestions: currentQuestions.length,
                 correctAnswers: correctAnswersCount,
                 pointsEarned: totalPointsEarned
             });
-            
-            // Check if already completed all questions
-            if (currentQuestionIndex >= currentQuestions.length) {
-                // All questions answered, should complete level
-                currentQuestionIndex = currentQuestions.length - 1;
-            }
         } else {
             // Starting fresh
             currentQuestionIndex = 0;
+            answeredQuestionsCount = 0;
             correctAnswersCount = 0;
             totalPointsEarned = 0;
             totalCoinsEarned = 0;
@@ -467,8 +473,8 @@ function displayLevelIntro() {
     
     // Update button text if resuming
     const startBtn = document.getElementById('start-quiz-btn');
-    if (currentQuestionIndex > 0) {
-        startBtn.textContent = `Resume Quiz (Question ${currentQuestionIndex + 1}/${currentQuestions.length}) 🚀`;
+    if (answeredQuestionsCount > 0 && currentQuestions.length > 0) {
+        startBtn.textContent = `Resume Quiz (Question ${answeredQuestionsCount + 1}/${totalQuestionsInLevel}) 🚀`;
     } else {
         startBtn.textContent = 'Start Quiz 🚀';
     }
@@ -482,10 +488,14 @@ function displayLevelIntro() {
 function startQuiz() {
     document.querySelector('.level-intro').classList.add('hidden');
     document.getElementById('quiz-container').classList.remove('hidden');
-    document.getElementById('total-questions').textContent = currentQuestions.length;
+    document.getElementById('total-questions').textContent = totalQuestionsInLevel;
     
     // Safety check - if no questions, show error
     if (!currentQuestions || currentQuestions.length === 0) {
+        if (answeredQuestionsCount >= totalQuestionsInLevel && totalQuestionsInLevel > 0) {
+            completeLevel();
+            return;
+        }
         alert('Error: No questions available. Please try refreshing the page.');
         loadDashboard();
         return;
@@ -494,13 +504,71 @@ function startQuiz() {
     displayQuestion();
 }
 
+function selectAdaptiveQuestionFromPool() {
+    if (!currentQuestions.length) {
+        return null;
+    }
+
+    const preferredOrder = currentAdaptiveRecommendation?.difficultyOrder?.length
+        ? currentAdaptiveRecommendation.difficultyOrder
+        : ['medium', 'easy', 'hard'];
+    const preferredTopic = !currentAdaptiveRecommendation || currentAdaptiveRecommendation.suggestedDifficulty === 'easy'
+        ? currentQuestionData?.topic
+        : null;
+
+    for (const difficulty of preferredOrder) {
+        const candidates = currentQuestions.filter(question => question.difficulty === difficulty);
+        if (candidates.length) {
+            const topicCandidates = preferredTopic
+                ? candidates.filter(question => question.topic === preferredTopic)
+                : [];
+            const pool = topicCandidates.length ? topicCandidates : candidates;
+            return pool[Math.floor(Math.random() * pool.length)];
+        }
+    }
+
+    return currentQuestions[0];
+}
+
+function buildStepFallbackRecommendation(question, wasCorrect, remainingQuestions) {
+    const currentDifficulty = question?.difficulty || 'medium';
+    const upgradeMap = { easy: 'medium', medium: 'hard', hard: 'hard' };
+    const downgradeMap = { hard: 'medium', medium: 'easy', easy: 'easy' };
+    const suggestedDifficulty = wasCorrect
+        ? (upgradeMap[currentDifficulty] || 'medium')
+        : (downgradeMap[currentDifficulty] || 'easy');
+
+    const remainingCounts = remainingQuestions.reduce((counts, remainingQuestion) => {
+        const difficulty = remainingQuestion.difficulty || 'medium';
+        counts[difficulty] = (counts[difficulty] || 0) + 1;
+        return counts;
+    }, { easy: 0, medium: 0, hard: 0 });
+
+    const fallbackOrder = {
+        easy: ['easy', 'medium', 'hard'],
+        medium: ['medium', 'easy', 'hard'],
+        hard: ['hard', 'medium', 'easy']
+    };
+
+    const difficultyOrder = fallbackOrder[suggestedDifficulty].filter(difficulty => remainingCounts[difficulty] > 0);
+    const finalDifficulty = difficultyOrder[0] || Object.keys(remainingCounts).find(difficulty => remainingCounts[difficulty] > 0) || 'medium';
+
+    return {
+        suggestedDifficulty: finalDifficulty,
+        difficultyOrder: difficultyOrder.length ? difficultyOrder : fallbackOrder.medium,
+        reason: wasCorrect
+            ? 'Adaptive progression moved you one step up after a correct answer.'
+            : 'Adaptive progression moved you one step down after an incorrect answer.',
+        remainingCounts
+    };
+}
+
 function displayQuestion() {
-    const question = currentQuestions[currentQuestionIndex];
+    const question = selectAdaptiveQuestionFromPool();
     
     // Safety check
     if (!question) {
-        console.error('No question at index', currentQuestionIndex);
-        showToast('Error loading question', 'error');
+        completeLevel();
         return;
     }
     
@@ -511,9 +579,10 @@ function displayQuestion() {
     questionStartTime = Date.now();
     
     // Update progress
-    document.getElementById('current-question').textContent = currentQuestionIndex + 1;
-    document.getElementById('current-question-header').textContent = currentQuestionIndex + 1;
-    const progress = ((currentQuestionIndex + 1) / currentQuestions.length) * 100;
+    const currentQuestionNumber = answeredQuestionsCount + 1;
+    document.getElementById('current-question').textContent = currentQuestionNumber;
+    document.getElementById('current-question-header').textContent = currentQuestionNumber;
+    const progress = (currentQuestionNumber / totalQuestionsInLevel) * 100;
     document.getElementById('progress-fill').style.width = progress + '%';
     
     // Display difficulty badge with color coding
@@ -524,6 +593,14 @@ function displayQuestion() {
     
     // Display question
     document.getElementById('question-text').textContent = question.question;
+
+    if (currentAdaptiveRecommendation?.reason) {
+        const adaptiveKey = `${currentAdaptiveRecommendation.suggestedDifficulty}:${currentAdaptiveRecommendation.reason}`;
+        if (lastAdaptiveInsightKey !== adaptiveKey) {
+            lastAdaptiveInsightKey = adaptiveKey;
+            showToast(`Adaptive AI: ${currentAdaptiveRecommendation.reason}`, 'info');
+        }
+    }
     
     // Reset and disable submit button
     const submitBtn = document.getElementById('submit-answer-btn');
@@ -569,7 +646,7 @@ function selectOption(selectedIndex) {
 async function submitAnswer() {
     if (selectedOptionIndex === null) return;
     
-    const question = currentQuestions[currentQuestionIndex];
+    const question = currentQuestionData;
     const submitBtn = document.getElementById('submit-answer-btn');
     
     // Hide submit button
@@ -596,9 +673,9 @@ async function submitAnswer() {
         });
         
         console.log('✅ Answer submitted:', {
-            questionIndex: currentQuestionIndex,
+            questionIndex: answeredQuestionsCount,
             correct: result.correct,
-            newProgress: currentQuestionIndex + 1
+            newProgress: answeredQuestionsCount + 1
         });
         
         // Update user balance and points
@@ -630,6 +707,32 @@ async function submitAnswer() {
             selectedOption.classList.add('incorrect');
             correctOption.classList.add('correct');
             playErrorSound();
+        }
+
+        answeredQuestionsCount++;
+        currentQuestionIndex = answeredQuestionsCount;
+        currentQuestions = currentQuestions.filter(remainingQuestion => remainingQuestion._id !== question._id);
+
+        const fallbackRecommendation = buildStepFallbackRecommendation(question, result.correct, currentQuestions);
+        const hasEasyRemaining = currentQuestions.some(remainingQuestion => remainingQuestion.difficulty === 'easy');
+        const hasMediumRemaining = currentQuestions.some(remainingQuestion => remainingQuestion.difficulty === 'medium');
+
+        if (result.adaptiveRecommendation) {
+            const serverRecommendation = result.adaptiveRecommendation;
+            const inconsistentMediumMiss = !result.correct
+                && question.difficulty === 'medium'
+                && hasEasyRemaining
+                && serverRecommendation.suggestedDifficulty === 'hard';
+            const inconsistentEasyHit = result.correct
+                && question.difficulty === 'easy'
+                && hasMediumRemaining
+                && serverRecommendation.suggestedDifficulty === 'hard';
+
+            currentAdaptiveRecommendation = (inconsistentMediumMiss || inconsistentEasyHit)
+                ? fallbackRecommendation
+                : serverRecommendation;
+        } else {
+            currentAdaptiveRecommendation = fallbackRecommendation;
         }
         
         // Show feedback
@@ -690,6 +793,13 @@ async function displayFeedback(result) {
                 ` : ''}
                 <span class="feedback-stat">Streak: ${result.streak} 🔥</span>
             </div>
+            ${result.adaptiveRecommendation ? `
+                <div class="feedback-stats">
+                    <span class="feedback-stat">AI Next: ${result.adaptiveRecommendation.suggestedDifficulty.toUpperCase()}</span>
+                    <span class="feedback-stat">Skill: ${result.skillSnapshot?.skillBand || 'balanced'}</span>
+                </div>
+                <p class="feedback-explanation">${result.adaptiveRecommendation.reason}</p>
+            ` : ''}
         </div>
     `;
     
@@ -697,9 +807,7 @@ async function displayFeedback(result) {
 }
 
 function nextQuestion() {
-    currentQuestionIndex++;
-    
-    if (currentQuestionIndex < currentQuestions.length) {
+    if (currentQuestions.length > 0) {
         displayQuestion();
     } else {
         completeLevel();
@@ -733,7 +841,7 @@ function displayLevelComplete(result) {
         `Great job! You've mastered ${currentLevel.title}!`;
     
     document.getElementById('correct-answers').textContent = 
-        `${correctAnswersCount}/${currentQuestions.length}`;
+        `${correctAnswersCount}/${totalQuestionsInLevel}`;
     document.getElementById('points-earned').textContent = totalPointsEarned;
     document.getElementById('coins-earned').textContent = 
         totalCoinsEarned + result.rewardCoins;
@@ -825,7 +933,8 @@ async function getAIHint() {
             body: JSON.stringify({
                 question: currentQuestionData.question,
                 options: currentQuestionData.options,
-                difficulty: currentQuestionData.difficulty
+                difficulty: currentQuestionData.difficulty,
+                topic: currentQuestionData.topic
             })
         });
         
