@@ -281,6 +281,82 @@ async function loadInitialMotivation() {
     }
 }
 
+// Badge Functions
+function updateBadges(totalPoints) {
+    const badges = [
+        { name: 'Bronze', points: 300, class: 'bronze' },
+        { name: 'Silver', points: 600, class: 'silver' },
+        { name: 'Gold', points: 900, class: 'gold' },
+        { name: 'Diamond', points: 1200, class: 'diamond' },
+        { name: 'Champion', points: 1500, class: 'champion' }
+    ];
+
+    const badgeCards = document.querySelectorAll('.badge-card');
+    
+    badgeCards.forEach((card, index) => {
+        const badge = badges[index];
+        if (totalPoints >= badge.points) {
+            card.classList.add('earned', badge.class);
+        } else {
+            card.classList.remove('earned', badge.class);
+        }
+    });
+}
+
+function shareLevelCompletion() {
+    const levelTitle = currentLevel?.title || 'a level';
+    const pointsEarned = document.getElementById('points-earned').textContent;
+    const coinsEarned = document.getElementById('coins-earned').textContent;
+    const correctAnswers = document.getElementById('correct-answers').textContent;
+    
+    const shareText = `🎉 Achievement Unlocked on FinMaster! 🎉
+
+📚 Level Completed: "${levelTitle}"
+✅ Correct Answers: ${correctAnswers}
+⭐ Points Earned: ${pointsEarned}
+💰 Coins Earned: ${coinsEarned}
+
+Building my financial literacy one level at a time! 💪📈
+
+#FinMaster #FinancialLiteracy #MoneyManagement #PersonalFinance #FinancialFreedom`;
+    
+    // Check if Web Share API is supported
+    if (navigator.share) {
+        navigator.share({
+            title: 'FinMaster - Level Completed! 🎉',
+            text: shareText
+        }).then(() => {
+            showToast('Shared successfully! 🎉', 'success');
+        }).catch((error) => {
+            // User cancelled or error occurred, fallback to copy
+            if (error.name !== 'AbortError') {
+                copyToClipboard(shareText);
+            }
+        });
+    } else {
+        // Fallback: Copy to clipboard
+        copyToClipboard(shareText);
+    }
+}
+
+function copyToClipboard(text) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    
+    try {
+        document.execCommand('copy');
+        showToast('Achievement copied to clipboard! 📋', 'success');
+    } catch (err) {
+        showToast('Failed to copy. Please share manually.', 'error');
+    }
+    
+    document.body.removeChild(textarea);
+}
+
 function updateDashboardUI(userData, levels) {
     // Update user info
     document.getElementById('username').textContent = userData.username;
@@ -288,6 +364,9 @@ function updateDashboardUI(userData, levels) {
     document.getElementById('points').textContent = userData.totalPoints;
     document.getElementById('completed-levels').textContent = userData.completedLevels.length;
     document.getElementById('streak').textContent = userData.streak;
+    
+    // Update badges
+    updateBadges(userData.totalPoints);
     
     // Update levels grid
     const levelsGrid = document.getElementById('levels-grid');
@@ -526,6 +605,15 @@ async function submitAnswer() {
         currentUser.virtualBalance = result.newBalance;
         currentUser.totalPoints = result.newPoints;
         currentUser.streak = result.streak;
+        
+        // Show badge notifications if any new badges earned
+        if (result.newBadges && result.newBadges.length > 0) {
+            result.newBadges.forEach((badge, index) => {
+                setTimeout(() => {
+                    showToast(`🏅 Badge Unlocked: ${badge}!`, 'success');
+                }, (index + 1) * 1000);
+            });
+        }
         
         // Visual feedback
         const selectedOption = options[selectedOptionIndex];
@@ -933,6 +1021,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('back-to-dashboard-complete').addEventListener('click', () => {
         loadDashboard();
     });
+    
+    // Share achievement button
+    document.getElementById('share-achievement').addEventListener('click', shareLevelCompletion);
     
     // Start quiz button
     document.getElementById('start-quiz-btn').addEventListener('click', startQuiz);

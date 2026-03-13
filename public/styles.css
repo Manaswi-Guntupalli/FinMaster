@@ -648,6 +648,117 @@ body {
     font-size: 0.9rem;
 }
 
+/* Badges Section */
+.badges-section {
+    background: white;
+    padding: 30px;
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    margin-top: 30px;
+}
+
+.badges-title {
+    font-size: 1.5rem;
+    margin-bottom: 20px;
+    color: var(--dark);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.badges-container {
+    display: flex;
+    gap: 20px;
+    overflow-x: auto;
+    padding: 10px 0;
+}
+
+.badge-card {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    border: 2px solid #cbd5e1;
+    border-radius: 16px;
+    padding: 20px;
+    min-width: 140px;
+    text-align: center;
+    transition: all 0.3s ease;
+    opacity: 0.5;
+    filter: grayscale(100%);
+}
+
+.badge-card.earned {
+    opacity: 1;
+    filter: grayscale(0%);
+    transform: scale(1.05);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+    animation: badgeUnlock 0.6s ease-out;
+}
+
+.badge-card.earned.bronze {
+    background: linear-gradient(135deg, #cd7f32 0%, #b87333 100%);
+    border-color: #8b4513;
+}
+
+.badge-card.earned.silver {
+    background: linear-gradient(135deg, #c0c0c0 0%, #a8a8a8 100%);
+    border-color: #808080;
+}
+
+.badge-card.earned.gold {
+    background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+    border-color: #daa520;
+}
+
+.badge-card.earned.diamond {
+    background: linear-gradient(135deg, #b9f2ff 0%, #69b4ff 100%);
+    border-color: #4682b4;
+}
+
+.badge-card.earned.champion {
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+    border-color: #c23616;
+}
+
+.badge-icon {
+    font-size: 3rem;
+    margin-bottom: 10px;
+    filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.2));
+}
+
+.badge-name {
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: var(--dark);
+    margin-bottom: 5px;
+}
+
+.badge-card.earned .badge-name {
+    color: white;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.badge-requirement {
+    font-size: 0.85rem;
+    color: var(--gray);
+}
+
+.badge-card.earned .badge-requirement {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+@keyframes badgeUnlock {
+    0% {
+        transform: scale(0.5) rotate(-10deg);
+        opacity: 0;
+    }
+    50% {
+        transform: scale(1.15) rotate(5deg);
+    }
+    100% {
+        transform: scale(1.05) rotate(0deg);
+        opacity: 1;
+    }
+}
+
 /* Achievements Section */
 .achievements-section {
     background: white;
@@ -1181,6 +1292,18 @@ body {
 .completion-stat h3 {
     font-size: 2rem;
     color: var(--primary-color);
+}
+
+.completion-actions {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.completion-actions .btn {
+    flex: 1;
+    min-width: 200px;
 }
 
 /* Gold Coin Splash Animation */

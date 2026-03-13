@@ -6,6 +6,36 @@ const Question = require('../models/Question');
 
 const router = express.Router();
 
+// Helper function to award badges based on points
+function awardBadges(user) {
+  const badgeThresholds = [
+    { name: 'Bronze', points: 300 },
+    { name: 'Silver', points: 600 },
+    { name: 'Gold', points: 900 },
+    { name: 'Diamond', points: 1200 },
+    { name: 'Champion', points: 1500 }
+  ];
+
+  const newBadges = [];
+  
+  for (const threshold of badgeThresholds) {
+    if (user.totalPoints >= threshold.points) {
+      // Check if user already has this badge
+      const hasBadge = user.badges.some(b => b.name === threshold.name);
+      if (!hasBadge) {
+        user.badges.push({
+          name: threshold.name,
+          earnedAt: new Date(),
+          pointsRequired: threshold.points
+        });
+        newBadges.push(threshold.name);
+      }
+    }
+  }
+  
+  return newBadges;
+}
+
 // Get all levels
 router.get('/levels', authMiddleware, async (req, res) => {
   try {
@@ -274,6 +304,7 @@ router.post('/submit-answer', authMiddleware, async (req, res) => {
       });
     }
 
+    let newBadges = [];
     if (isCorrect) {
       user.totalPoints += question.points;
       user.virtualBalance += 50; // Earn coins for correct answer
@@ -284,7 +315,17 @@ router.post('/submit-answer', authMiddleware, async (req, res) => {
         user.achievements.push({ name: 'Hot Streak', earnedAt: new Date() });
       }
       
+      // Award badges based on points
+      newBadges = awardBadges(user);
+      
       await user.save();
+      
+      // Include badge notifications
+      if (newBadges.length > 0) {
+        newBadges.forEach(badge => {
+          console.log(`🏅 User earned badge: ${badge}`);
+        });
+      }
     } else {
       user.streak = 0;
       await user.save();
@@ -306,6 +347,7 @@ router.post('/submit-answer', authMiddleware, async (req, res) => {
       newPoints: user.totalPoints,
       streak: user.streak,
       newAchievements: isCorrect && user.streak === 5 ? ['Hot Streak'] : [],
+      newBadges: newBadges,
       topic: question.topic,
       category: question.category
     });

@@ -66,6 +66,11 @@ const userSchema = new mongoose.Schema({
     name: String,
     earnedAt: Date
   }],
+  badges: [{
+    name: { type: String, enum: ['Bronze', 'Silver', 'Gold', 'Diamond', 'Champion'] },
+    earnedAt: { type: Date, default: Date.now },
+    pointsRequired: Number
+  }],
   streak: {
     type: Number,
     default: 0
