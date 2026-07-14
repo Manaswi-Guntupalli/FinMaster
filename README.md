@@ -73,4 +73,4 @@ http://localhost:3000
 
 Fully optimized for all screen sizes!
 
-Enjoy learning finance with FinMaster! 🚀💰
+Enjoy learning finance with FinMaster! 🚀
